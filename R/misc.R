@@ -1,0 +1,155 @@
+# very permissive variant of ifelse
+if.else = function(a,b,c)
+{
+  if(isTruthy(a)) return(b)
+  c
+}
+
+is.masked.integer = function(x) is.numeric(x) && !is.integer(x) && all(x %% 1 == 0)
+
+dropNulls = function(x) x[!vapply(x, is.null, FUN.VALUE = logical(1))]
+
+resp_data_bkl = function(rsp, bkl)
+{
+  rsp$x = filter(rsp$x, .data$booklet_id == bkl)
+  rsp$design = filter(rsp$design, .data$booklet_id == bkl)
+  rsp
+}
+
+disable_panes = function(panes)
+{
+  paste0('$("', paste0("a[data-value='",panes,"']", collapse=','), "\").closest('li').addClass('disabled')")
+}
+
+enable_panes = function(panes)
+{
+  paste0('$("', paste0("a[data-value='",panes,"']", collapse=','), "\").closest('li').removeClass('disabled')")
+}
+
+
+
+
+delayed_list = setRefClass('delayed_list',
+  fields = list(data_ = 'list'),
+  methods = list(
+    clear = function() data_ <<- list(),
+    assign = function(name, expr, env = NULL)
+    {
+      if(is.null(env)) env = caller_env()
+      # can do partial_eval, maybe better
+      cll = list(env = env, qtexpr = eval(substitute(quote(expr))))
+      class(cll) = append(class(cll), 'delay')
+
+      data_[[name]] <<- cll
+    },
+    get = function(name)
+    {
+      if(inherits(data_[[name]], 'delay')) data_[[name]] <<- eval(data_[[name]]$qtexpr, envir = data_[[name]]$env)
+      return(data_[[name]])
+    }
+))
+
+# returns c(nrow,ncol) based on npic to minimise whitespace in faceted plot display
+# based on the assumption of slightly more available width than height
+matrix_layout = Vectorize(
+  function(npic){
+    if(npic == 1) return(c(1,1))
+    if(npic == 2) return(c(1,2))
+    if(npic <= 4) return(c(2,2))
+    if(npic <= 6) return(c(2,3))
+    return(c(3,3))
+  })
+
+
+rtype_from_sql = function(sql_type)
+{
+  out = rep_len('character',length(sql_type))
+  
+  out[grepl('double', sql_type, ignore.case=TRUE)] = 'double'
+  out[grepl('int', sql_type, ignore.case=TRUE)] = 'integer'
+  out
+}
+
+
+
+var_scale2 = Vectorize(function(varname, values )
+{
+  if(tolower(varname)=='person_id') return('ID-variable')
+  if(grepl('((id)|(code)|(class)|(type))$',varname, perl=TRUE)) return('nominal')
+  if(is.character(values)) return('nominal')
+  if(is.integer(values)) return('ordinal')
+  if(is.numeric(values)) return('continuous')
+  return('nominal')
+})
+
+
+# is incidence matrix connected
+im_is_connected = function(im)
+{
+  d = crossprod(im, im)
+  diag(d) = 0
+
+  visited = rep(FALSE, ncol(d))
+  rownames(d) = c(1:nrow(d))
+  colnames(d) = c(1:nrow(d))
+  dfs = function(start) {
+    start = as.integer(start)
+    if (visited[start])
+      return(0)
+    visited[start] <<- TRUE
+    vapply(rownames(d)[d[, start] > 0], dfs, 0)
+    0
+  }
+  dfs(1)
+  return(all(visited))
+}
+
+ctt_items_table = function(itemStats, averaged)
+{
+  if(averaged)
+  {
+    itemStats = itemStats %>% 
+      group_by(.data$item_id) %>% 
+      summarise(nBooklets = n(), 
+                meanScore = weighted.mean(.data$meanScore, w = .data$n, na.rm = TRUE), 
+                sdScore = weighted.mean(.data$sdScore, w = .data$n, na.rm = TRUE), 
+                maxScore = max(.data$maxScore), 
+                pvalue = weighted.mean(.data$pvalue, w = .data$n, na.rm = TRUE), 
+                rit = weighted.mean(.data$rit, w = .data$n, na.rm = TRUE), 
+                rir = weighted.mean(.data$rir, w = .data$n, na.rm = TRUE), n = sum(.data$n, na.rm = TRUE))
+  }
+  
+  # do some rounding and aesthetic renaming
+  itemStats %>%
+    mutate(pvalue = round(.data$pvalue,3), rit = round(.data$rit,3), rir = round(.data$rir,3),
+          meanScore = round(.data$meanScore,2), sdScore = round(.data$sdScore,2))
+
+}
+
+
+dxvar_suggestion = function(db, var, .starts_with = '', .max = 10)
+{
+  for(tbl in c('dxItems','dxScoring_rules','dxBooklets', 'dxBooklet_design','dxPersons','dxResponses'))
+  {
+    if(var %in% dbListFields(db,tbl))
+    {
+      return(
+        dbGetQuery(db,paste0('SELECT DISTINCT ', var, ' FROM ', tbl, 
+                             ' WHERE CAST(', var, " AS TEXT) LIKE '", gsub("'", "", .starts_with, fixed = TRUE), "%'",
+                             ' ORDER BY ', var, ' LIMIT ', .max, ';'))[,1])
+    }
+  }
+  return('')
+}
+
+
+theme_nothing = function() 
+{
+  theme(line = element_blank(), rect = element_blank(), 
+        text = element_blank(), axis.ticks.length = unit(0, "cm"), 
+        legend.position = "none", panel.spacing = unit(0, "lines"), 
+        plot.margin = unit(c(0, 0, 0, 0), "lines"), complete = TRUE)
+}
+
+
+
