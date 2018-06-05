@@ -6,15 +6,11 @@
 #'
 #' Opens a shiny application providing a graphical user interface to dexter. 
 #' 
-#' `dextergui()`
-#' 
 #' @param dbpath path to a dexter project database
 #' or NULL, in which case you can select a project after starting dextergui
 #' @param wd where dextergui looks for and saves files, defaults to current working directory. 
 #' Within the gui you can move to subdirectories of \code{wd} but not further up the tree than \code{wd}.
 #' 
-#' 
-#'
 dextergui = function(dbpath = NULL, wd = getwd())
 {
   roots = c('.' = normalizePath(wd))
@@ -286,11 +282,16 @@ init_project = function()
   session$sendCustomMessage(type = 'set_js_vars', 
                             message=list(data = list(variables = get_variables(db))))
   
-  hide('project_load_icon')
-  hide('oplm_inputs')
-  hide('abl_tables_plot_booklet')
-  runjs(enable_panes(c('rules_pane', 'ctt_pane', 'inter_pane','data_pane', 'enorm_pane')))
-  shinyjs::enable(selector='#go_import_new_rules,#go_import_new_itemprop,#go_import_new_personprop')
+  
+  lapply(c('project_load_icon','oplm_inputs','abl_tables_plot_booklet'), hide)
+  
+  show('proj_rules_frm')
+  if.else(nrow(values$rules) > 0, show, hide)('proj_items_frm')
+  if.else(nrow(values$person_properties) > 0, show, hide)('proj_persons_frm')
+  
+  if.else(nrow(values$rules) > 0, enable_panes, disable_panes)('data_pane')
+  if.else(nrow(values$person_properties) > 0, enable_panes, disable_panes)(c('ctt_pane', 'inter_pane','enorm_pane'))
+
   updateImgSelect(session, inputId = "abp_plotbar",choices=list())
 }
 
@@ -298,9 +299,8 @@ init_project = function()
 ## init for the first time if a db is specified, otherwise disable all other panes
 if(is.null(db))
 {
-  hide('project_load_icon')
-  runjs(disable_panes(c('rules_pane', 'ctt_pane', 'inter_pane','data_pane', 'enorm_pane')))
-  shinyjs::disable(selector='#go_import_new_rules,#go_import_new_itemprop,#go_import_new_personprop')
+  lapply(c('project_load_icon','proj_items_frm','proj_persons_frm','proj_rules_frm'), hide)
+  disable_panes(c( 'ctt_pane', 'inter_pane','data_pane', 'enorm_pane'))
   output$project_pth = renderText('No project loaded yet')
 } else
 {
@@ -482,7 +482,7 @@ observeEvent(input$go_start_new_project_from_oplm,
 observeEvent(input$rules_file,{
   
   input_file = input$rules_file
-  rules = read_excel(input_file$datapath, sheet=1)
+  rules = read_spreadsheet(input_file$datapath)
   colnames(rules) = tolower(colnames(rules))
   if(length(setdiff(c('item_id','item_score','response'),colnames(rules))) == 0)
   {
@@ -497,7 +497,6 @@ observeEvent(input$rules_file,{
     output$rules_upload_error = renderText({''})
   } else
   {
-    #foutje, TO DO: error message
     output$output$rules_upload_error = renderText(
       {
         paste0('The input file has to contain columns (item_id, item_score, response) ',
@@ -509,24 +508,22 @@ observeEvent(input$rules_file,{
 })
 
 output$new_rules_preview = renderTable({
-  if(!is.null(values$new_rules))
-  {
-    tibble(column = c('item_id','response','item_score'), 
+  req(values$new_rules)
+
+  tibble(column = c('item_id','response','item_score'), 
            values = paste0(sapply(values$new_rules[1:10, c('item_id','response','item_score')], paste, collapse = ', '),', ...'))
-  }
 }, caption = 'file preview')
 
 observeEvent(input$go_import_new_rules,{
-  if(!is.null(values$new_rules))
+  withBusyIndicatorServer("go_import_new_rules",
   {
-    withBusyIndicatorServer("go_import_new_rules",
-    {
-      touch_rules(db, values$new_rules)
-      values$new_rules = NULL
-      values$rules = get_rules(db)
-      values$item_properties = get_items(db)
-    })
-  }
+    if(is.null(values$new_rules))
+      stop('No file selected')
+    touch_rules(db, values$new_rules)
+    reset('rules_file')
+    init_project()
+  })
+
 })
 
 
@@ -534,14 +531,15 @@ output$rules = renderDataTable(
 {
   req(values$rules)
   values$rules %>% 
-      add_column(old_item_score = values$rules$item_score) 
+     mutate(old_item_score = .data$item_score) 
 }, 
  selection = 'none', rownames = FALSE, colnames = c('item_id','response','item_score',''), 
- class='compact readable', server=FALSE, escape=FALSE,
+ class='compact readable', escape=FALSE, server=FALSE,
  options = list(pageLength = 20, autoWidth = FALSE,
                 columnDefs = list(list(targets = 3, 
                                        render = JS("function(data,type,row){return(row[2] == row[3] ? '' : '<span class=\"label label-info\">!</span>')}"))))
 )
+outputOptions(output, "rules", suspendWhenHidden=FALSE)
 
 observeEvent(input$rules_data, {
   show('prj_alter_rules')
@@ -573,7 +571,7 @@ observeEvent(input$prj_alter_rules, {
 output$item_properties = renderDataTable(
   {
     req(values$item_properties)
-    # skip once if necessary
+    # skip once if necessary for updatable DT
     # this has a side effect (toggle) !
     isolate({
       update = values$update_item_properties
@@ -611,7 +609,7 @@ observeEvent(input$item_properties_user_update,
 # read from file
 observeEvent(input$itemprop_file,{
   input_file = input$itemprop_file
-  values$new_item_properties = read_excel(input_file$datapath, sheet=1)
+  values$new_item_properties = read_spreadsheet(input_file$datapath)
   
 })
 
@@ -632,6 +630,7 @@ observeEvent(input$go_import_new_itemprop,
 
     add_item_properties(db, values$new_item_properties )
     values$new_item_properties = NULL
+    reset('itemprop_file')
     session$sendCustomMessage(type = 'set_js_vars', 
                               message=list(data = list(variables = get_variables(db))))
   })
@@ -680,33 +679,33 @@ observeEvent(input$person_properties_user_update,
 
 observeEvent(input$person_property_file,
 {
-  values$new_person_properties = read_excel(input$person_property_file$datapath, sheet=1)
+  values$new_person_properties = read_spreadsheet(input$person_property_file$datapath)
 })
 
 
 output$new_personprop_preview = renderTable({
-  if(!is.null(values$new_person_properties))
-  {
+  req(values$new_person_properties)
+
     tibble(column = colnames(values$new_person_properties), 
            values = paste0(sapply(slice(values$new_person_properties, 1:10), paste, collapse = ', '),', ...'))
-  }
 })
 
 observeEvent(input$go_import_new_personprop,
 {
-  if(!is.null(values$new_person_properties))
+  withBusyIndicatorServer("go_import_new_personprop",
   {
-    withBusyIndicatorServer("go_import_new_personprop",
-    {
-      if(!('person_id' %in% tolower(colnames(values$new_person_properties))))
-        stop('missing person_id column')
+    if(is.null(values$new_person_properties))
+       stop('No file selected')
       
-      add_person_properties(db, values$new_person_properties)
-      values$new_person_properties = NULL
-      session$sendCustomMessage(type = 'set_js_vars', 
-                                message=list(data = list(variables = get_variables(db))))
-    })
-  }
+    if(!('person_id' %in% tolower(colnames(values$new_person_properties))))
+      stop('missing person_id column')
+      
+    add_person_properties(db, values$new_person_properties)
+    values$new_person_properties = NULL
+    reset('person_property_file')
+    session$sendCustomMessage(type = 'set_js_vars', 
+                              message=list(data = list(variables = get_variables(db))))
+  })
 })
 
 
@@ -716,15 +715,9 @@ observeEvent(input$go_import_new_personprop,
 
 
 
-observe({
+observeEvent(input$data_file,{
   data_file = input$data_file
-  if(is.null(data_file))
-  {
-    values$import_data = NULL
-  } else
-  {
-    values$import_data = read_excel(data_file$datapath, sheet=1)
-  }
+  values$import_data = if.else(is.null(data_file), NULL, read_spreadsheet(data_file$datapath))
 })
 
 output$data_preview = renderTable({
@@ -798,7 +791,7 @@ observeEvent(input$go_import_data, {
     result = add_booklet(db, values$import_data, booklet_id = booklet_id)
     n = nrow(values$import_data)
     values$import_data = NULL
-    shinyjs::reset('data_file')
+    reset('data_file')
     
     init_project()
     
@@ -880,13 +873,13 @@ output$inter_booklets_csv_download = downloadHandler(
 )
 
 observe({
-  if(!is.null(input$inter_booklets_rows_selected) && !is.null(db))
-  {
+  req(values$ctt_booklets,input$inter_booklets_rows_selected)
     values$inter_booklet = as.character(values$ctt_booklets$booklet_id[input$inter_booklets_rows_selected])
-    values$inter_plot_items = dbGetQuery(db, 'SELECT item_id FROM dxBooklet_design WHERE booklet_id=:booklet ORDER BY item_position;',
-                                         tibble(booklet=values$inter_booklet))$item_id
+    values$inter_plot_items = dbGetQuery(db, 
+             'SELECT item_id FROM dxBooklet_design WHERE booklet_id=:booklet ORDER BY item_position;',
+             tibble(booklet=values$inter_booklet)
+             )$item_id
     
-  }
 }, priority=2)
 
 
@@ -938,7 +931,7 @@ output$ctt_items = renderDataTable(
   isolate({
 
     if(!is.null(values$selected_ctt_item))
-      selected = min(which(data[['item_id']] == values$selected_ctt_item[['item_id']]))
+       selected = min(which(data[['item_id']] == values$selected_ctt_item[['item_id']]))
 
     if(values$ctt_items_settings$keep_search && !is.null(input$ctt_items_search))
       search_ = input$ctt_items_search
@@ -988,7 +981,7 @@ observe({
   {
     values$selected_ctt_item = ctt_items_table(values$ctt_items, input$ctt_items_averaged)[input$ctt_items_rows_selected,]
   }
-}, priority=1) 
+}) 
 
 output$ctt_selected_item = renderUI({if(!is.null(values$selected_ctt_item)) values$selected_ctt_item$item_id})
 

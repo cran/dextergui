@@ -18,7 +18,7 @@ library(knitr)
 library(dplyr)
 library(dexter)
 
-opts_chunk$set(echo = FALSE,dev='CairoPNG')#,fig.align='center', fig.width=6, fig.height=5)
+opts_chunk$set(echo = FALSE,dev='CairoPNG')
 ```
 
 **Dextergui** provides a graphical user interface to the main functionality of dexter, a package for analysis of educational tests. You can start it from the R(studio) console in the following way:
@@ -193,7 +193,7 @@ Clicking the button **fit_enorm** will fit the Extended Nominal Response Model, 
 
 When you have calibrated your model dexter can compute ability estimates for each person. You have a choice of using a Maximimum Likelihood Estimate (MLE) or an Expected a Priori (EAP) estimate with choice of a Jeffreys or a normal prior. There is an extremely rich selection of plots to see how ability is distributed in your population(s). Enriching your data with person properties (see the projects tab) will let you make the most of these. You can also view and download the estimated abilities per person.
 
-![](img/abplot.PNG)
+![](img/abplot.PNG){width=75%}
 
 
 **Score-ability tables** lets you compute a score-to-ability transformation table for each booklet. The item parameters resulting from your calibration can be found in the tab **item parameters**.

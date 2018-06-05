@@ -18,12 +18,14 @@ resp_data_bkl = function(rsp, bkl)
 
 disable_panes = function(panes)
 {
-  paste0('$("', paste0("a[data-value='",panes,"']", collapse=','), "\").closest('li').addClass('disabled')")
+  runjs(paste0('$("', paste0("a[data-value='",panes,"']", collapse=','), 
+               "\").closest('li').addClass('disabled')"))
 }
 
 enable_panes = function(panes)
 {
-  paste0('$("', paste0("a[data-value='",panes,"']", collapse=','), "\").closest('li').removeClass('disabled')")
+  runjs(paste0('$("', paste0("a[data-value='",panes,"']", collapse=','), 
+               "\").closest('li').removeClass('disabled')"))
 }
 
 
@@ -59,28 +61,6 @@ matrix_layout = Vectorize(
     if(npic <= 6) return(c(2,3))
     return(c(3,3))
   })
-
-
-rtype_from_sql = function(sql_type)
-{
-  out = rep_len('character',length(sql_type))
-  
-  out[grepl('double', sql_type, ignore.case=TRUE)] = 'double'
-  out[grepl('int', sql_type, ignore.case=TRUE)] = 'integer'
-  out
-}
-
-
-
-var_scale2 = Vectorize(function(varname, values )
-{
-  if(tolower(varname)=='person_id') return('ID-variable')
-  if(grepl('((id)|(code)|(class)|(type))$',varname, perl=TRUE)) return('nominal')
-  if(is.character(values)) return('nominal')
-  if(is.integer(values)) return('ordinal')
-  if(is.numeric(values)) return('continuous')
-  return('nominal')
-})
 
 
 # is incidence matrix connected
@@ -151,5 +131,78 @@ theme_nothing = function()
         plot.margin = unit(c(0, 0, 0, 0), "lines"), complete = TRUE)
 }
 
+# guess parameters for read.csv
+# based on heuristics
+guess_csv_format = function(txt, delim = c('|',';',',','\t'))
+{
+  out = list(stringsAsFactors = FALSE, dec='.', quote = "\"'")
+  # first guess quote
+  # assumes doubling quote character to escape
+  dbl_q = gregexpr('"', txt, fixed = TRUE) %>%
+    sapply(function(ps) if.else(length(ps) %% 2 != 0, -1, min(ps)))
+  
+  sngl_q = gregexpr("'", txt, fixed = TRUE) %>%
+    sapply(function(ps) if.else(length(ps) %% 2 != 0, -1, min(ps)))
+  
+  
+  res = case_when(
+    dbl_q == -1 & sngl_q == -1 ~ 'none',
+    dbl_q < sngl_q | sngl_q == -1 ~ '"',
+    TRUE ~ "'")
+  
+  # remove quoted strings as they can contain potential delimiters
+  # note: unquoted strings will remain
+  if(!all(res == 'none'))
+  {
+    res = table(res[res != 'none'])
+    out$quote = names(res)[which.max(as.vector(res))]
+    txt = gsub(paste0(out$quote,'[^',out$quote,']*', out$quote),'',txt,perl=TRUE)
+  }
+
+  delim = sapply(delim, function(dl) nchar(txt) - nchar( gsub(dl, "", txt,fixed=TRUE)), simplify=FALSE) %>%
+    sapply(unique, simplify=FALSE)
+  
+  delim = delim[sapply(delim, length) == 1 & sapply(delim, min) > 0]
+
+  if(length(delim) == 1)
+  {
+    out$sep = names(delim)
+  } else if(length(delim) == 0)
+  {
+    # single column so separator does not matter
+    ous$sep = ';'
+  } else if(length(delim) == 2 && ',' %in% names(delim))
+  {
+    # , is probably decimal sign
+    out$sep = names(delim)[names(delim) != ',']
+  } else 
+  {
+    stop('cannot guess delimiter')
+  }
+  if(out$sep != ',' && any(grepl(',',txt,fixed=TRUE)) && !any(grepl('.',txt,fixed=TRUE)))
+  {
+    out$dec = ','
+  }
+  out
+}
+
+read_spreadsheet = function(fn)
+{
+  stopifnot(length(fn) == 1)
+  
+  if(grepl('\\.xlsx?$', fn, perl=TRUE, ignore.case=TRUE))
+  {
+    read_excel(fn, sheet = 1, col_names = TRUE)
+  } else if(grepl('\\.ods$', fn, perl=TRUE, ignore.case=TRUE))
+  {
+    read_ods(fn, sheet = 1, col_names = TRUE)
+  } else
+  {
+    con = file(fn, "r")
+    smpl = readLines(con, n= 1000, encoding='utf8')
+    close(con)
+    do.call(read.csv, modifyList(guess_csv_format(smpl),list(file = fn)))
+  }
+}
 
 

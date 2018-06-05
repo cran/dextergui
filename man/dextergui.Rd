@@ -16,6 +16,3 @@ Within the gui you can move to subdirectories of \code{wd} but not further up th
 \description{
 Opens a shiny application providing a graphical user interface to dexter.
 }
-\details{
-`dextergui()`
-}

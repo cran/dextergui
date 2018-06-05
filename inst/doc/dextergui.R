@@ -3,7 +3,7 @@ library(knitr)
 library(dplyr)
 library(dexter)
 
-opts_chunk$set(echo = FALSE,dev='CairoPNG')#,fig.align='center', fig.width=6, fig.height=5)
+opts_chunk$set(echo = FALSE,dev='CairoPNG')
 
 ## ---- eval=FALSE, echo=TRUE----------------------------------------------
 #  library(dextergui)
