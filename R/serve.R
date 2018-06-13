@@ -231,9 +231,11 @@ init_project = function()
   # reset reactiveValues
   lapply(names(default_reactive), function(nm){values[[nm]] = default_reactive[[nm]]})
   
-  values$rules = get_rules(db)
+  rules = get_rules(db)
+  persons = get_persons(db) %>% mutate_if(is.masked.integer, as.integer)
+  values$rules = rules
   values$item_properties = get_items(db)
-  values$person_properties = get_persons(db) %>% mutate_if(is.masked.integer, as.integer)
+  values$person_properties = persons
  
   interaction_models$clear()
 
@@ -254,28 +256,29 @@ init_project = function()
     
     tia = tia_tables(data, type='raw')
     
-    
     sparks = dexter:::get_resp_data(data, summarised=TRUE)$x %>% 
       group_by(booklet_id) %>%
       summarise(test_score = sparkbox_vals(.data$sumScore))#, 
                 #test_score2 = sparkhist_vals(sumScore, nbar=12, .min = 0, .max = max(tia$testStats$maxTestScore)) )
     
-    values$ctt_items = tia$itemStats
-    
-    values$ctt_booklets = tia$testStats %>%
+    tia$testStats = tia$testStats %>%
       mutate(alpha = round(.data$alpha,3), meanP = round(.data$meanP,3), meanRit = round(.data$meanRit,3), meanRir = round(.data$meanRir,3)) %>%
       inner_join(sparks, by='booklet_id')
     
-    if(all(grepl('^\\d+$',values$ctt_booklets$booklet_id)))
+    if(all(grepl('^\\d+$',tia$testStats$booklet_id)))
     {
-      values$ctt_booklets = values$ctt_booklets %>%
-        mutate(booklet_id = as.integer(.data$booklet_id)) %>%
-        arrange(.data$booklet_id)
+      tia$testStats = tia$testStats %>%
+        arrange(as.integer(.data$booklet_id))
       
-      values$ctt_items =  values$ctt_items %>%
-        mutate(booklet_id = as.integer(.data$booklet_id)) %>%
-        arrange(.data$item_id, .data$booklet_id)
+      tia$itemStats =  tia$itemStats %>%
+        arrange(.data$item_id, as.integer(.data$booklet_id))
     }
+    
+    values$ctt_items = tia$itemStats
+    
+    values$ctt_booklets = tia$testStats
+    
+    
     
   }
   
@@ -286,11 +289,11 @@ init_project = function()
   lapply(c('project_load_icon','oplm_inputs','abl_tables_plot_booklet'), hide)
   
   show('proj_rules_frm')
-  if.else(nrow(values$rules) > 0, show, hide)('proj_items_frm')
-  if.else(nrow(values$person_properties) > 0, show, hide)('proj_persons_frm')
+  if.else(nrow(rules) > 0, show, hide)('proj_items_frm')
+  if.else(nrow(persons) > 0, show, hide)('proj_persons_frm')
   
-  if.else(nrow(values$rules) > 0, enable_panes, disable_panes)('data_pane')
-  if.else(nrow(values$person_properties) > 0, enable_panes, disable_panes)(c('ctt_pane', 'inter_pane','enorm_pane'))
+  if.else(nrow(rules) > 0, enable_panes, disable_panes)('data_pane')
+  if.else(nrow(persons) > 0, enable_panes, disable_panes)(c('ctt_pane', 'inter_pane','enorm_pane'))
 
   updateImgSelect(session, inputId = "abp_plotbar",choices=list())
 }

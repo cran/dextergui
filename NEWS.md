@@ -1,3 +1,7 @@
+# dextergui 0.1.3
+
+* re-uploaded after being removed from Cran, no significant changes
+
 # dextergui 0.1.2
 
 * bugfix: importing .csv files now works
@@ -8,6 +12,6 @@
 
 # dextergui 0.1.1
 
-A SHiny application for educationale data management and application of Classical Test Theory and Item Response Theory
+A Shiny application for educational data management and application of Classical Test Theory and Item Response Theory
 
 * start with `dextergui()`

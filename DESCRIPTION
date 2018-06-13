@@ -1,7 +1,7 @@
 Package: dextergui
 Type: Package
 Title: A Graphic User Interface to Dexter
-Version: 0.1.2
+Version: 0.1.3
 Author: Jesse Koops, Eva de Schipper, Ivailo Partchev, Timo Bechger, Gunter Maris
 Maintainer: jesse koops <jesse.koops@cito.nl>
 Description: A graphical user interface for dexter. Offers Classical Test and Item analysis, 
@@ -20,6 +20,6 @@ RoxygenNote: 6.0.1
 Suggests: knitr
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2018-06-05 15:36:44 UTC; jessek
+Packaged: 2018-06-13 13:01:52 UTC; jessek
 Repository: CRAN
-Date/Publication: 2018-06-05 17:42:58 UTC
+Date/Publication: 2018-06-13 21:37:58 UTC
