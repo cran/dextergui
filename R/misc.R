@@ -1,3 +1,5 @@
+utils::globalVariables(c("."))
+
 # very permissive variant of ifelse
 if.else = function(a,b,c)
 {
@@ -15,6 +17,23 @@ resp_data_bkl = function(rsp, bkl)
   rsp$design = filter(rsp$design, .data$booklet_id == bkl)
   rsp
 }
+
+resp_data_split_bkl = function(rsp)
+{
+  ds = split(rsp$design, rsp$design$booklet_id)
+  res = lapply(split(rsp$x, rsp$x$booklet_id), 
+    function(x){ 
+      res = list(x=x, design=ds[[x$booklet_id[1]]], summarised = rsp$summarised)
+      class(res) = class(rsp)
+      res
+    })
+  names(res) = lapply(res, function(x) x$design$booklet_id[1])
+  res
+}
+
+
+
+
 
 disable_panes = function(panes)
 {
@@ -122,7 +141,7 @@ dxvar_suggestion = function(db, var, .starts_with = '', .max = 10)
   return('')
 }
 
-
+# ggplot empty theme, no margins
 theme_nothing = function() 
 {
   theme(line = element_blank(), rect = element_blank(), 

@@ -11,6 +11,17 @@ dt_readable = function(dt_output){
   dt_output
 }
 
+df2html = function(df, ...)
+{
+  do.call(tags$table,
+    modifyList(
+      list(tags$thead(do.call(tags$tr, lapply(colnames(df), tags$th))),
+                 tags$tbody(apply(df,1,function(x) do.call(tags$tr,lapply(as.vector(x), tags$td))))),
+      list(...)))
+  
+}
+
+
 get_raw_select = Vectorize(function(options, selected = options[1])
 {
   paste0('<select>',
@@ -231,7 +242,7 @@ generate_inputs = function(fun, id = deparse(substitute(fun)),
     {
       
       tgs[[argname]] = etextAreaInput(paste(id, argname,sep='_'), 
-                                      label = argname, 
+                                      label = 'data selection', 
                                       rows=1, resize='none', width='200px',
                                       class='predicate-with-help', inline=TRUE)
     } else
@@ -265,10 +276,13 @@ generate_inputs = function(fun, id = deparse(substitute(fun)),
       {
         tt_id = paste(id, argname,sep='_')
       }
-      tgs[[paste0(tt_id,'tip',sep='_')]] = bsTooltip(tt_id,
-                                                     gsub("'", "\\'", gsub('\n',' ', hlp$arguments[[argname]]),fixed=TRUE),
-                                                     options=list(delay=300, html=TRUE))
-
+      tgs[[paste0(tt_id,'tip',sep='_')]] = bsTooltip(
+          tt_id,
+          hlp$arguments[[argname]] %>%
+            gsub("'", "\\'", ., fixed=TRUE) %>%
+            gsub('\n',' ', .) %>%
+            gsub('NULL', 'empty', ., fixed=TRUE),
+          options=list(delay=300, html=TRUE))
     }
   }
 
@@ -391,14 +405,19 @@ download_buttons = function(dt_id)
            class='full_download_buttons')
 }
 
-dt_buttons = function(dt_id)
+dt_buttons = function(dt_id, title = '', btn_options = NULL )
 {
+  if(is.null(btn_options))
+    btn_options = list()
+  
+  fn = function(ext) JS(paste0('function(){return($("#project_pth").text()+"',title,'" + "',ext,'");}'))
+
   list(
-    list(extend='copy', text='', className='fa fa-clipboard'),
-    list(extend='csv', text='csv'),
-    list(extend='excel', text='', className='fa fa-file-excel-o'),
-    list(extend='pdf', text='', className='fa fa-file-pdf-o'),
-    list(extend='print', text='', className='fa fa-print'),
+    modifyList(list(extend='copy', text='', className='fa fa-clipboard'), btn_options),
+    modifyList(list(extend='csv', text='csv', title = fn('.csv')), btn_options),
+    modifyList(list(extend='excel', text='', title = fn('.xlsx'), className='fa fa-file-excel-o'), btn_options),
+    modifyList(list(extend='pdf', text='', title = fn('.pdf'), className='fa fa-file-pdf-o'), btn_options),
+    modifyList(list(extend='print', text='', className='fa fa-print'), btn_options),
     list(extend='', text='', className='fa fa-file-excel-o full-download', 
          action = unbox(JS(paste0("function(){ $('#",dt_id,"_xl_download').get(0).click()}")))),
     list(extend='', text='csv', className='full-download', 
@@ -406,4 +425,4 @@ dt_buttons = function(dt_id)
   )
 }
 
-#c('copy', 'csv', 'excel', 'pdf', 'print')
+

@@ -8,7 +8,7 @@
 #' 
 #' @param dbpath path to a dexter project database
 #' or NULL, in which case you can select a project after starting dextergui
-#' @param wd where dextergui looks for and saves files, defaults to current working directory. 
+#' @param wd where dextergui looks for and saves project files, defaults to current working directory. 
 #' Within the gui you can move to subdirectories of \code{wd} but not further up the tree than \code{wd}.
 #' 
 dextergui = function(dbpath = NULL, wd = getwd())
@@ -20,7 +20,7 @@ dextergui = function(dbpath = NULL, wd = getwd())
   
   # 100mb upload limit
   options(shiny.maxRequestSize = 100*1024^2)
-  
+
   server = function(input, output, session)
   {
     
@@ -52,144 +52,7 @@ dextergui = function(dbpath = NULL, wd = getwd())
 
 if(tolower(Sys.info()['sysname']) == "windows" && substr(roots[1],1,2) %in% c('\\\\','//'))
 {
-  # copy paste of some functions in the shinyFiles package with small corrections 
-  # to make it less demanding a windows dynamic link environment 
-  
-  shinyFileChoose <- function(input, id, updateFreq=2000, session = getSession(), 
-                              defaultRoot=NULL, defaultPath='', ...) {
-    fileGet <- do.call('fileGetter', list(...))
-    currentDir <- list()
-    clientId = session$ns(id)
-    
-    return(observe({
-      dir <- input[[paste0(id, '-modal')]]
-      if(is.null(dir) || is.na(dir)) {
-        dir <- list(dir=defaultPath, root=defaultRoot)
-      } else {
-        dir <- list(dir=dir$path, root=dir$root)
-      }
-      dir$dir <- do.call(file.path, as.list(dir$dir))
-      newDir <- do.call('fileGet', dir)
-      if(!identical(currentDir, newDir)) {
-        currentDir <<- newDir
-        session$sendCustomMessage('shinyFiles', list(id=clientId, dir=newDir))
-      }
-      invalidateLater(updateFreq, session)
-    }))
-  }
-  
-  getSession <- function() {
-    session <- shiny::getDefaultReactiveDomain()
-    
-    if (is.null(session)) {
-      stop(paste(
-        "could not find the Shiny session object. This usually happens when a",
-        "shinyjs function is called from a context that wasn't set up by a Shiny session."
-      ))
-    }
-    
-    session
-  }
-  
-  
-  
-  fileGetter <- function(roots, restrictions, filetypes, hidden=FALSE) {
-    if (missing(filetypes)) filetypes <- NULL
-    if (missing(restrictions)) restrictions <- NULL
-    
-    function(dir, root) {
-      currentRoots <- if(class(roots) == 'function') roots() else roots
-      
-      if (is.null(names(currentRoots))) stop('Roots must be a named vector or a function returning one')
-      if (is.null(root)) root <- names(currentRoots)[1]
-      
-      fulldir <- file.path(currentRoots[root], dir)
-      writable <- as.logical(file.access(fulldir, 2) == 0)
-      files <- list.files(fulldir, all.files=hidden, full.names=TRUE, no..=TRUE)
-      files <- gsub(pattern='//*', '/', files, perl=TRUE)
-      # moved to here to ameliorate slow file.info function on r 3.4 windows 10 slow file.info function
-      if (!is.null(filetypes)) {
-        ptrn = paste0(paste0('(\\.',filetypes,')', collapse = '|'), '$')
-        # list.dirs is still slow but don't know how to recognize a dir otherwise
-        files = files[grepl(ptrn, files, perl=TRUE) | dir.exists(files)]
-      }
-      if (!is.null(restrictions) && length(files) != 0) {
-        if (length(files) == 1) {
-          keep <- !any(sapply(restrictions, function(x) {grepl(x, files, fixed=T)}))
-        } else {
-          keep <- !apply(sapply(restrictions, function(x) {grepl(x, files, fixed=T)}), 1, any)
-        }
-        files <- files[keep]
-      }
-      fileInfo <- file.info(files)
-      fileInfo$filename <- basename(files)
-      fileInfo$extension <- tolower(file_ext(files))
-      fileInfo$mtime <- format(fileInfo$mtime, format='%Y-%m-%d-%H-%M')
-      fileInfo$ctime <- format(fileInfo$ctime, format='%Y-%m-%d-%H-%M')
-      fileInfo$atime <- format(fileInfo$atime, format='%Y-%m-%d-%H-%M')
-      if (!is.null(filetypes)) {
-        matchedFiles <- tolower(fileInfo$extension) %in% tolower(filetypes) & fileInfo$extension != ''
-        fileInfo$isdir[matchedFiles] <- FALSE
-        fileInfo <- fileInfo[matchedFiles | fileInfo$isdir,]
-      }
-      rownames(fileInfo) <- NULL
-      breadcrumps <- strsplit(dir, .Platform$file.sep)[[1]]
-      
-      list(
-        files=fileInfo[, c('filename', 'extension', 'isdir', 'size', 'mtime', 'ctime', 'atime')],
-        writable=writable,
-        exist=file.exists(fulldir),
-        breadcrumps=I(c('', breadcrumps[breadcrumps != ''])),
-        roots=I(names(currentRoots)),
-        root=root
-      )
-    }
-  }
-  
-  shinyFileSave <- function(input, id, updateFreq=2000, session=getSession(),
-                            defaultPath='', defaultRoot=NULL, ...) {
-    fileGet <- do.call('fileGetter', list(...))
-    dirCreate <- do.call('dirCreator', list(...))
-    currentDir <- list()
-    lastDirCreate <- NULL
-    clientId = session$ns(id)
-    
-    return(observe({
-      dir <- input[[paste0(id, '-modal')]]
-      createDir <- input[[paste0(id, '-newDir')]]
-      if(!identical(createDir, lastDirCreate)) {
-        dirCreate(createDir$name, createDir$path, createDir$root)
-        dir$path <- c(dir$path, createDir$name)
-        lastDirCreate <<- createDir
-      }
-      if(is.null(dir) || is.na(dir)) {
-        dir <- list(dir=defaultPath, root=defaultRoot)
-      } else {
-        dir <- list(dir=dir$path, root=dir$root)
-      }
-      dir$dir <- do.call(file.path, as.list(dir$dir))
-      newDir <- do.call('fileGet', dir)
-      if(!identical(currentDir, newDir) && newDir$exist) {
-        currentDir <<- newDir
-        session$sendCustomMessage('shinySave', list(id=clientId, dir=newDir))
-      }
-      invalidateLater(updateFreq, session)
-    }))
-  }
-  
-  dirCreator <- function(roots, ...) {
-    function(name, path, root) {
-      currentRoots <- if(class(roots) == 'function') roots() else roots
-      
-      if (is.null(names(currentRoots))) stop('Roots must be a named vector or a function returning one')
-      
-      location <- do.call('file.path', as.list(path))
-      location <- file.path(currentRoots[root], location, name)
-      
-      dir.create(location)
-    }
-  }
-  
+
   shinyFileChoose(input, 'open_proj_fn', roots = roots, filetypes=c('db','sqlite'), updateFreq=15000)
   shinyFileSave(input, 'new_proj_fn', roots = roots, filetypes=c('db','sqlite'), session=session, restrictions=system.file(package='base'), updateFreq=15000)
   shinyFileSave(input, 'start_new_project_from_oplm_dbname', filetypes=c('db','sqlite'), roots = roots, session=session, restrictions=system.file(package='base'), updateFreq=15000)
@@ -251,7 +114,7 @@ init_project = function()
       interaction_models$assign(bkl, fit_inter(resp_data_bkl(data, bkl)), env=env)
       #interaction_models$assign(bkl, fit_inter(db, booklet_id==bkl), env=env)
     }
-    
+
     ## prepare CTT ##
     
     tia = tia_tables(data, type='raw')
@@ -324,7 +187,10 @@ observeEvent(input$varsuggest,
 })
     
 # clean up
-session$onSessionEnded(function(x){ if(!is.null(db)) close_project(db) })
+session$onSessionEnded(function(x)
+{ 
+  if(!is.null(db)) close_project(db) 
+})
 
 
 # project page ------------------------------------------------------------
@@ -337,6 +203,7 @@ session$onSessionEnded(function(x){ if(!is.null(db)) close_project(db) })
 observeEvent(input$open_proj_fn,
 {
   open_proj_fn = parseFilePaths(roots, input$open_proj_fn)
+  req(open_proj_fn$datapath)
   if(!is.null(db))
     close_project(db)
   db <<- open_project(as.character(open_proj_fn$datapath))
@@ -348,6 +215,7 @@ observeEvent(input$open_proj_fn,
 observeEvent(input$new_proj_fn,
 {
   new_proj_fn = parseSavePath(roots, input$new_proj_fn)
+  req(new_proj_fn$datapath)
   if(!is.null(db))
     close_project(db)             
   # start a truly empty project in a way not advertised anywhere
@@ -856,7 +724,8 @@ output$inter_booklets = renderDataTable({
     }, rownames = FALSE, selection = list(mode = 'single', selected = selected), 
             class='compact', extensions = 'Buttons',
             options = list(columnDefs = cdef, fnDrawCallback = drawcallback,
-                           buttons = dt_buttons('inter_booklets'),
+                           buttons = dt_buttons('inter_booklets', title = '_ctt_booklets',
+                                                list(exportOptions = list(columns=':not(:last-child)'))),
                            searching = FALSE, pageLength = 15, scrollX = TRUE, autoWidth=FALSE, dom='<"dropdown" B>lrtip',
                            initComplete = JS("dt_btn_dropdown")))
   
@@ -865,13 +734,13 @@ output$inter_booklets = renderDataTable({
 output$inter_booklets_xl_download = downloadHandler(
     filename = function(){paste0(gsub('\\.\\w+$','',basename(db@dbname), perl=TRUE),'_ctt_booklets.xlsx')},
     content = function(file) {
-      write_xlsx(values$ctt_booklets, file)
+      write_xlsx(select(values$ctt_booklets, -.data$test_score), file)
     }
 )
 output$inter_booklets_csv_download = downloadHandler(
   filename = function(){paste0(gsub('\\.\\w+$','',basename(db@dbname), perl=TRUE),'_ctt_booklets.csv')},
   content = function(file) {
-    write.csv2(values$ctt_booklets, file, row.names = FALSE, fileEncoding = "utf8")
+    write.csv2(select(values$ctt_booklets, -.data$test_score), file, row.names = FALSE, fileEncoding = "utf8")
   }
 )
 
@@ -892,6 +761,7 @@ observe({
   req(values$inter_booklet, values$inter_plot_items)
 
   f = interaction_models$get(values$inter_booklet)
+
   updateSlider(session, 'interslider',
     lapply(values$inter_plot_items, function(item)
     {
@@ -945,7 +815,7 @@ output$ctt_items = renderDataTable(
     rownames = FALSE, selection = list(mode = 'single', selected = selected), class='compact',
     extensions = 'Buttons',
     options = list(dom='<"dropdown" B>lfrtip',
-                   buttons = dt_buttons('ctt_items'),
+                   buttons = dt_buttons('ctt_items', title='ctt_items'),
                    search = list(search = search_),
                    pageLength = 20, scrollX = TRUE,
                    columnDefs = list(list(className = "numeric", targets = list(8)),
@@ -1184,7 +1054,7 @@ output$fit_enorm_result = renderUI(
         if.else(x$inputs$method == 'CML', 
           tags$tr(tags$th('iterations: '), tags$td(x$est$n_iter)),
           tags$tr(tags$th('Gibbs samples: '), tags$td(nrow(x$est$beta.cml)))),
-        if.else(x$xpr,
+        if.else(x$xpr != 'NULL',
                 tags$tr(tags$th('selection: '), tags$td(x$xpr)),
                 ''),
         tags$tr(tags$th('items:'), tags$td(nrow(x$inputs$ssI))),
@@ -1957,6 +1827,6 @@ output$abp_download = downloadHandler(
 
 }
   
-  shinyApp(get_ui(), server)
+  print(shinyApp(get_ui(), server))
 }
 

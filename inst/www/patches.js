@@ -197,7 +197,7 @@ range = function()
 
     return result;
   };
-}) (jQuery.fn.clone);
+})(jQuery.fn.clone);
 
 
 // named array

@@ -1,19 +1,15 @@
 
 body{padding-top:70px;}
+div.navbar-header{
+  width:0;
+  height:0;
+  overflow:hidden;
+}
+@media only screen and (max-width: 768px) {
+  /*allow for stacked navbar*/
+  body{padding-top:258px;}
+}
 
-span.pr-helper-button{
-	vertical-align:top;
-	color: #555;
-	font-size:120%;
-	margin:4px;
-	padding:3px;
-}
-span.pr-helper-button:hover{
-	border: 1px solid #ccc;
-	border-radius:2px;
-	margin:3px;
-	
-}
 
 div.help-page-outer{
   max-height:calc(100vh - 75px);
@@ -56,16 +52,16 @@ div.help-page{
 }
 
 
-.help-page table th{
+.help-page table th, table.min-table th{
   padding:5px;
   border-bottom: 1px solid gray;
 }
-.help-page table{
+.help-page table, table.min-table{
   border-bottom: 1px solid gray;
   margin:0.5em;
 }
 
-.help-page td{
+.help-page td, table.min-table td{
   padding-left:5px;
   padding-right:5px;
 }
@@ -367,10 +363,28 @@ button.inline{
 
 /************** PREDICATE HELPER ***************/
 
+span.pr-helper-button{
+	vertical-align:top;
+	color: #555;
+	font-size:120%;
+	margin:4px;
+	padding:3px;
+}
+span.pr-helper-button:hover{
+	border: 1px solid #ccc;
+	border-radius:2px;
+	margin:3px;
+	
+}
+
 div.pred_helper.card{
   z-index:100;
   border: 1px solid gray;
   padding:5px;
+  box-shadow:5px 5px 10px lightslategray;
+  position: absolute;
+  left:0;
+  white-space:normal;
 }
 
 .pred_helper input, .pred_lines select, .pred_lines button

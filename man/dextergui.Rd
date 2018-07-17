@@ -10,7 +10,7 @@ dextergui(dbpath = NULL, wd = getwd())
 \item{dbpath}{path to a dexter project database
 or NULL, in which case you can select a project after starting dextergui}
 
-\item{wd}{where dextergui looks for and saves files, defaults to current working directory. 
+\item{wd}{where dextergui looks for and saves project files, defaults to current working directory. 
 Within the gui you can move to subdirectories of \code{wd} but not further up the tree than \code{wd}.}
 }
 \description{
