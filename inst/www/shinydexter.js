@@ -23,8 +23,6 @@ var shinydexter = {
 };
 
 
-
-
 get_input_groups = function(selector)
 {
   var $obj = $();
@@ -49,6 +47,80 @@ hide_inputs = function(selector) {get_input_groups(selector).hide()}
 
 show_inputs = function(selector) {get_input_groups(selector).show()}
 
+
+// custom table of input elements
+var inputlistBinding = new Shiny.InputBinding();
+$.extend(inputlistBinding, {
+  find: function(scope) {
+    return $(scope).find("div.inputList");
+  },
+  getValue: function(el) {
+	return $(el).serializeObject();
+  },
+  setValue: function(el, value) {
+    $.each(value,function(name, val){
+		$(el).find('input[name="' + name + '"]').val(val);
+	});
+  },
+  subscribe: function(el, callback) {
+    $(el).on("change.inputList", function(e) {
+      callback();
+    });
+  },
+  unsubscribe: function(el) {
+    $(el).off("div.inputList");
+  },
+  receiveMessage: function(el, message) {
+	var me = $(el);
+	//console.log(message)
+	if(message.hasOwnProperty('fieldset'))
+	{
+		me.find('table').remove();	
+		me.append('<table><tbody>' +
+							$.map(message.fieldset, function(val,nm)
+							{
+								var tr = val.type == 'hidden' ? '<tr style="display:none">' : '<tr>'
+								return tr + '<td>'+nm+':</td><td><input name="'+nm+'" type="'+val.type+'"/></td></tr>';
+							}).join('') +
+						'</tbody></table>');
+	}
+	if(message.hasOwnProperty('value'))
+	{
+		$.each(message.value, function(nm, val)
+		{
+			me.find('input[name="'+nm+'"]').val(val);
+		});
+	}
+  }
+});
+
+Shiny.inputBindings.register(inputlistBinding);
+
+
+// custom multi toggle button
+var mtoggleBinding = new Shiny.InputBinding();
+$.extend(mtoggleBinding, {
+  find: function(scope) {
+    return $(scope).find("div.multi-toggle-input");
+  },
+  getValue: function(el) {
+	return $(el).find('button.btn-primary').data('value');
+  },
+  setValue: function(el, value) {
+    $(el).find('button').removeClass('btn-primary');
+	$(el).find('button[data-val="'+value+'"]').addClass('btn-primary');
+  },
+  subscribe: function(el, callback) {
+    $(el).on("change", function(e) {
+      callback();
+    });
+  },
+  unsubscribe: function(el) {
+    $(el).off("div.multi-toggle-input");
+  }
+});
+
+Shiny.inputBindings.register(mtoggleBinding);
 
 // custom range as two numeric inputs
 var erangeBinding = new Shiny.InputBinding();
@@ -85,17 +157,40 @@ $(function()
       e.preventDefault();
       return false;
   });
+  
+  // id for body to use in shinyjs
+  $('body').attr('id','doc-body');
+  
+  //insert a quit button
+  var navlist = $('ul.navbar-nav');
+  if(navlist.length==1) //otherwise don't know what to do, so no quit button
+  {
+    $('<ul class="nav navbar-nav navbar-right"><li><a id="app_quit"><span class="glyphicon glyphicon-log-out"></span> Quit</a></li></ul>')
+		.click(function(){Shiny.onInputChange('quit_application', true);setTimeout(function(){window.open('','_self').close()},300)})
+		.insertAfter(navlist);
+  }
 
   $('#oplm_btn').click(function()
   {
+	$('#example_datasets').hide();
     var i = $('#oplm_inputs');
     if ( i.is( ":hidden" ) ) {
-      i.slideDown(  );
+      i.slideDown();
     } else {
       i.slideUp();
     }
   });
 
+  $('#example_dts_btn').click(function()
+  {
+	$('#oplm_inputs').hide();
+    var i = $('#example_datasets');
+    if ( i.is( ":hidden" ) ) {
+      i.slideDown();
+    } else {
+      i.slideUp();
+    }
+  });
 
   $(document).on('change','.e-range-input input:first-child', function(e)
   {
@@ -124,6 +219,7 @@ $(function()
     
     $(this)
       .removeClass('btn-default').addClass('btn-primary');
+	$(this).trigger('change');
   });
   
   $(document).click(function(){$('.tooltip').remove()});
@@ -144,12 +240,10 @@ $(function()
     $('.shiny-color-picker').trigger('change');
   });
   
-  /*
-  $('body').on('click','.plte-choices span',function(e){
-    var plt = $(this).closest('div').clone();
-     $(this).closest('div.palette-input').find('div.current-choice').empty().append(plt);
+  $('#example_datasets div[data-dataset]').click(function(e){
+	Shiny.onInputChange('example_datasets',$(this).data('dataset'));
   });
-  */
+  
   
   $(document).on("click", ".img-select-scrollbody img", function(e) {
    if($(this).hasClass('disabled') || $(this).hasClass('active')) return false; 
@@ -179,6 +273,13 @@ $(function()
    $(this).trigger('img-select-update');
   });
   
+
+   // live update of footer plots
+  Shiny.addCustomMessageHandler("update_footplot",
+    function(message){
+		update_footplot(message.jqstring, message.html);
+    }
+  );
 
 
   // make some information from the dexter db available for javascript
@@ -215,18 +316,51 @@ $(function()
   
   Shiny.addCustomMessageHandler("updateSlider",
     function(message) {
-      var me = $('#' + message.id);
-      me.data('index',0);
-      var slider = me.find('div.slider');
-      slider.empty();
-      slider.css('left','0');
-      $.each(message.data, function(i,e)
-  		{
-  		  var img = $('<img>').attr('src', e.src).attr('image_id', e.image_id);
-  			slider.append(img);
-  		});
-  		me.removeClass('uninitialized');
-  		me.find('.slider img').eq(0).click();
+      var me = $('#' + message.id);	  
+	  var slider = me.find('div.slider');
+      
+	  if(message.hasOwnProperty('error'))
+	  {
+		slider.empty();
+		me.find('.alert').css('display','initial').text(message.error);		
+	  } else
+	  {
+		me.find('.alert').css('display','none').text('');
+	  }
+	  
+	  if(message.hasOwnProperty('data'))
+	  {		  
+		  slider.empty();
+		  slider.css('left','0');
+		  $.each(message.data, function(i,e)
+			{
+			  var img = $('<img>').attr('src', e.src).attr('image_id', e.image_id);
+				slider.append(img);
+			});
+		  //me.removeClass('uninitialized');
+		  indx=0;
+		  if(!message.hasOwnProperty('selected'))
+		  {
+			me.data('index',0);
+			me.find('.slider img').eq(0).click();		  
+		  }
+		  
+	  }
+	  if(message.hasOwnProperty('selected'))
+	  {
+		slider.find('img').each(function(i,e)
+		{
+			if($(this).attr('image_id') == message.selected)
+			{				
+				me.data('index',i);
+				me.find('.slider img').eq(i).click();	
+				return(false);
+			}
+		});
+	  }
+	  slider.find('img').length>0 ? me.removeClass('uninitialized') : me.addClass('uninitialized');
+	  
+	  
     }
   );
 
@@ -241,7 +375,7 @@ $(function()
     var me = $(this);
     var slider = me.closest('div.slider');
     var i = slider.find('img').index(me);
-    var w = me.outerWidth(false) ;
+    var w = me.outerWidth(true);
     var plot_slider = me.closest('div.plot_slider, div.select_slider');
     if(slider.data('dragged')) {return(false)}
 
@@ -301,5 +435,29 @@ $(function()
     var offset = parseInt(slider.css('left')) + slider.width()/slider.find('img').length;
     slider.animate({left: Math.min(offset,0) + 'px'},400);
   });
+
+  
+  $('div.plot_slider .slider, div.select_slider .slider').on('mousewheel', function(event) {
+	var me = $(this);
+	if(me.data('wheelbusy') === true) return(false);
+	me.data('wheelbusy', true);
+    var slider = me.closest('div.plot_slider, div.select_slider').find('.slider');
+	var min = slider.parent().width() - slider.width();
+	var move = 0;
+	
+	if(event.deltaX == -1) move=-1.1 * event.deltaFactor
+	else if(event.deltaX == 1) move=1.1*event.deltaFactor
+	else if(event.deltaY == -1) move=-1.1*event.deltaFactor
+	else if(event.deltaY == 1) move=1.1*event.deltaFactor;
+	
+	var offset = Math.min(Math.max(parseInt(slider.css('left')) + move,min),0);
+	
+
+	slider.animate({left: offset + 'px'},50,'linear', function(){me.data('wheelbusy', false);} );	
+	return(false);
+  });
+
+
+
 
 });

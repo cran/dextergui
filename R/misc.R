@@ -7,7 +7,7 @@ if.else = function(a,b,c)
   c
 }
 
-is.masked.integer = function(x) is.numeric(x) && !is.integer(x) && all(x %% 1 == 0)
+is_integer_ = function(x) is.integer(x) || (is.numeric(x) && all(x %% 1 == 0))
 
 dropNulls = function(x) x[!vapply(x, is.null, FUN.VALUE = logical(1))]
 
@@ -32,9 +32,6 @@ resp_data_split_bkl = function(rsp)
 }
 
 
-
-
-
 disable_panes = function(panes)
 {
   runjs(paste0('$("', paste0("a[data-value='",panes,"']", collapse=','), 
@@ -48,6 +45,15 @@ enable_panes = function(panes)
 }
 
 
+
+set_js_vars = function(db, session)
+{
+  vr = get_variables(db) 
+  vr = vr[,!colnames(vr) %in% c('item_screenshot','item_html')]
+    
+  session$sendCustomMessage(type = 'set_js_vars', 
+                            message=list(data = list(variables = vr)))
+}
 
 
 delayed_list = setRefClass('delayed_list',
@@ -72,14 +78,12 @@ delayed_list = setRefClass('delayed_list',
 
 # returns c(nrow,ncol) based on npic to minimise whitespace in faceted plot display
 # based on the assumption of slightly more available width than height
-matrix_layout = Vectorize(
-  function(npic){
-    if(npic == 1) return(c(1,1))
-    if(npic == 2) return(c(1,2))
-    if(npic <= 4) return(c(2,2))
-    if(npic <= 6) return(c(2,3))
-    return(c(3,3))
-  })
+matrix_layout = function(npic){
+  rw = round(sqrt(npic))
+  cl = ceiling(npic/rw)
+  matrix(1:(rw*cl),rw,cl,byrow=TRUE)
+}
+
 
 
 # is incidence matrix connected
@@ -141,6 +145,34 @@ dxvar_suggestion = function(db, var, .starts_with = '', .max = 10)
   return('')
 }
 
+#experimental interpolation of r statements, rmarkdown like
+rstr_eval = function(txt, dataset){
+
+  m = gregexpr('`r [^`]+`',txt,perl=TRUE)
+  if(length(m[[1]])>0)
+  {
+    env = list2env(dataset)
+    m = regmatches(txt,m)
+    for(s in unlist(m))
+    {
+      res = try(paste0(eval(parse(text=substr(s,4,nchar(s)-1)),envir=env),collapse=' '),silent=TRUE)
+      if(inherits(res,'try-error'))
+      {
+        if(grepl('parse(text',res,fixed=TRUE))
+        {
+          res = '<...>'
+        } else
+        {
+          res = trimws(gsub('^[^:]+:','',res,perl=TRUE))
+        }
+      }
+      txt = sub(s,res,txt,fixed=TRUE)
+    }
+  }
+  txt
+}
+
+
 # ggplot empty theme, no margins
 theme_nothing = function() 
 {
@@ -149,6 +181,14 @@ theme_nothing = function()
         legend.position = "none", panel.spacing = unit(0, "lines"), 
         plot.margin = unit(c(0, 0, 0, 0), "lines"), complete = TRUE)
 }
+
+# solve invalid names for aes string
+qaes_string = function(...){
+  args = sapply(list(...), function(x) {paste0('`',x,'`')}, simplify=FALSE, USE.NAMES=TRUE )
+  do.call(aes_string, args)
+}
+
+
 
 # guess parameters for read.csv
 # based on heuristics
@@ -189,7 +229,7 @@ guess_csv_format = function(txt, delim = c('|',';',',','\t'))
   } else if(length(delim) == 0)
   {
     # single column so separator does not matter
-    ous$sep = ';'
+    out$sep = ';'
   } else if(length(delim) == 2 && ',' %in% names(delim))
   {
     # , is probably decimal sign
@@ -223,5 +263,52 @@ read_spreadsheet = function(fn)
     do.call(read.csv, modifyList(guess_csv_format(smpl),list(file = fn)))
   }
 }
+
+
+
+readSCR = function (file) 
+{
+  z = file(file, "rb")
+  n = readBin(z, integer(), size = 2, 3)
+  nit = n[3]
+  itemLabels = sapply(1:nit, function(x) {
+    sl = readBin(z, integer(), size = 1, 1)
+    rawToChar(readBin(z, raw(), n = 8)[1:sl])
+  })
+  globCal = readBin(z, integer(), size = 1, nit)
+  discrim = readBin(z, integer(), size = 1, nit)
+  maxScore = readBin(z, integer(), size = 1, nit)
+  parFixed = readBin(z, integer(), size = 1, nit)
+  four = readBin(z, integer(), size = 1, 4)
+  sl = readBin(z, integer(), size = 1, 1)
+  jobname = rawToChar(readBin(z, raw(), n = 12)[1:sl])
+  five = readBin(z, integer(), size = 1, 5)
+  sl = readBin(z, integer(), size = 1, 1)
+  title = rawToChar(readBin(z, raw(), n = 79)[1:sl])
+  for (i in 1:20) {
+    sl = readBin(z, integer(), size = 1, 1)
+    if (sl > 0) 
+      someComment = rawToChar(readBin(z, raw(), n = sl))
+  }
+  sl = readBin(z, integer(), size = 1, 1)
+  dataDir = rawToChar(readBin(z, raw(), n = 60)[1:sl])
+  sl = readBin(z, integer(), size = 1, 1)
+  dataFile = rawToChar(readBin(z, raw(), n = 12)[1:sl])
+  expanded = readBin(z, integer(), size = 1, 1)
+  expanded = 1 - expanded
+  sl = readBin(z, integer(), size = 1, 1)
+  fmt = rawToChar(readBin(z, raw(), n = sl))
+
+  close(z)
+  
+  fmt = as.integer(unlist(regmatches(fmt, gregexpr('\\d+',fmt,perl=TRUE))))
+  
+  list(nit = nit, booklet_position = c(fmt[1], fmt[1] + fmt[2] - 1L),
+       responses_start = fmt[3], response_length = fmt[5],
+       expanded = expanded)
+}
+
+
+
 
 

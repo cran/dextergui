@@ -1,5 +1,11 @@
 # dextergui 0.1.4
 
+* Added example data sets
+* new feature: plausible values
+* 
+
+# dextergui 0.1.4
+
 * slightly improved help
 * bugfix for a breaking change in shinyFiles 0.7.0
 * small change to accomodate a new ggplot2 release

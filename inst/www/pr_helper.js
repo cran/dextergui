@@ -40,10 +40,10 @@ quote_val = function(s, variable)
     var phelper = function() 
     {
 	
-	  var help = '<a class="btn btn-lg" data-toggle="collapse" data-target="#help-pr-helper" href="#" style="position:absolute;top:0;right:5px;"><i class="fa fa-question-circle"></i></a>' +
+	  var help = '<a class="btn btn-lg" data-toggle="collapse" data-target="#help-pr-helper" href="#" style="padding:0px 5px;"><i class="fa fa-question-circle"></i></a>' +
 		'<div class="collapse" id="help-pr-helper" style="text-align:left;padding:10px;font-size:13px;">You can use the fields below to make a subset of your data for analysis. ' +
-		'Each line is a logical statement that omits or includes data, e.g. <b><i>booklet_id equal "pretest"</i></b> will select just the data from the booklet called pretest. ' +
-		'You can combine multiple lines by selecting <b><i>and/or</i></b> or <b><i>all/any</i></b> from the grouping inputs at the start of each line. Alternatively, if you\'re more familiar with R, you can directly type an R statement.</div>';
+		'Each line is a logical statement that omits or includes data, e.g. <b><i>booklet_id equal pretest</i></b> will select just the data from the booklet called pretest. ' +
+		'You can combine multiple lines by selecting <b><i>and/or</i></b> or <b><i>all/any</i></b> from the <i>group</i> inputs at the start of each line. Alternatively, if you\'re more familiar with R, you can directly type an R statement.</div>';
 	
       var variable = $('<select name="variable"/>');
       $.each(shinydexter.variables.name, function(i,e)
@@ -222,11 +222,7 @@ quote_val = function(s, variable)
                     .attr('id', inp.attr('id') + '-helper')
                     .data('for', inp.attr('id'))
 					.appendTo($(this).parent());
-                    //.appendTo($(this).closest('div.tab-pane, body'));
-  
-                  hlp.css('width', Math.max($(this).parent().width(), hlp.find('table').width()+40) + 'px' )
-                   // .position({my:'left top+3', at: 'left bottom', of: $(this).parent() });               
-                  
+                 
                   
                   hlp.find('input[name="value"]')  
                     .autocomplete({

@@ -21,15 +21,18 @@ df2html = function(df, ...)
   
 }
 
-
-get_raw_select = Vectorize(function(options, selected = options[1])
+# add a downloadbutton to a plotOutput element
+plot_add_download_btn = function(plt)
 {
-  paste0('<select>',
-    paste0('<option value="',htmlEscape(options, attribute = TRUE),'"',ifelse(options==selected,' selected',''),'>', 
-              htmlEscape(options), '</option>',
-           collapse=''),
-    '<select>')
-}, vectorize.args='selected')
+  id = paste0(tagGetAttribute(plt, 'id'), '_download')
+  btn = tags$a(class = 'plot-save-btn shiny-download-link',
+               download="", id=id, target="_blank", href="",
+               tags$span(class="glyphicon glyphicon-floppy-disk"))
+  
+  tags$div(plt, btn, style='position:relative')
+}
+
+
 
 # editable also implies readable
 # columns currenlty a vector of column numbers
@@ -72,6 +75,35 @@ savename_btn = function(id, label,width='116px',...)
 }
 
 
+# if choices is a list, names will be taken as keys and values can be plain text or tags
+# if choices is an unnamed vector, the elements will be both display and value
+# if choices is a named vector, names are the values
+multiToggleButton = function(id, choices, selected='', btn_width='7em', style=NULL)
+{
+  if(is.null(names(choices)))
+    names(choices) = choices
+  
+  if(selected != '' && !selected %in% names(choices))
+    stop(paste0("'", selected,"' not in choices"))
+  
+  if(nchar(btn_width)>0)
+    btn_width = paste('width:',btn_width)
+    
+  args = mapply(function(val,txt){
+    tags$button(txt, type='button', 
+                class=paste("btn",if_else(val==selected,'btn-primary','btn-default')),
+                `data-value`= val,
+                style=paste("white-space: nowrap;",btn_width))
+    
+    }, names(choices), choices, SIMPLIFY=FALSE, USE.NAMES=FALSE)
+  
+  args$id = id
+  if(!is.null(style)) args$style = style
+  args$class = "btn-group toggle-button-group multi-toggle-input"
+  
+  do.call(tags$div, args)
+  
+}
 
 
 # slight updates to some standard input tags
@@ -140,7 +172,7 @@ css_divide = function(css, divide_by)
 
 
 
-erangeInput = function(inputId, label, value=NULL, min = NA, max = NA, step = 1, width, inline=FALSE)
+rangeInput = function(inputId, label, value=NULL, min = NA, max = NA, step = 1, width, inline=FALSE)
 {
 
   style = out_in_style( inline, width)
@@ -188,6 +220,17 @@ erangeInput = function(inputId, label, value=NULL, min = NA, max = NA, step = 1,
   class = 'form-group e-range-input shiny-input-container-inline',
   style = style$outer
   )
+}
+
+updateRangeInput = function(session, inputId,  value = NULL,
+                             min = NULL, max = NULL, step = NULL)
+{
+  paste0(inputId,'__r__0')
+  updateNumericInput(session, paste0(inputId,'__r__0'),  
+                     value = value[1],min = min, max = max, step = step)
+  
+  updateNumericInput(session, paste0(inputId,'__r__1'),  
+                     value = value[2],min = min, max = max, step = step)
 }
 
 
@@ -256,7 +299,7 @@ generate_inputs = function(fun, id = deparse(substitute(fun)),
                                 choices = eval(arg), inline=inline,width=width),
           boolean = eselectInput(paste(id, argname,sep='_'), label = argname,
                                  choices=c(TRUE,FALSE), selected = arg, inline = inline, width = width),
-          `range` = erangeInput(paste(id, argname,sep='_'), label = argname, 
+          `range` = rangeInput(paste(id, argname,sep='_'), label = argname, 
                                 value = if.else(missing(arg), NULL, arg), width = css_divide(width,1.5), inline=inline, min=1),
           file_input = tagAppendAttributes(
                           fileInput(paste(id, argname,sep='_'), label = argname, width = '200px'),
@@ -310,7 +353,7 @@ generate_inputs = function(fun, id = deparse(substitute(fun)),
 # input$[id]_select works similar to selectInput, contains the image chosen by the user
 # output$[id]_plot works similar to plotOutput, set this to update the main plot
 #
-# in addition use updateSlider to update the choises
+# in addition use updateSlider to update the choices
 #
 plotSlider = function(id, width='100%', height='700px')
 {
@@ -324,7 +367,11 @@ plotSlider = function(id, width='100%', height='700px')
                     tags$div(class='slidearea',
                              tags$div(class='slider')),
                     tags$div(class='slide_right', tags$span(class='glyphicon glyphicon-chevron-right',style='top:50%;'))),
-           class = 'plot_slider uninitialized', style = paste0('width:',width,';height:',height,';'))
+           tags$div(class='alert alert-danger',style='display:none;position:absolute;top:5px;left:5px;'),
+           class = 'plot_slider uninitialized', style = paste0('width:',width,';height:',height,';position:relative;'),
+           tags$a(class = 'plot-save-btn shiny-download-link',
+                  download="", id=paste0(id,'_download'), target="_blank", href="",
+                  tags$span(class="glyphicon glyphicon-floppy-disk")))
 }
 
 
@@ -349,16 +396,26 @@ selectSlider = function(id, width='100%', height = '100px')
 # with the element src referring to an existing temporary file (it will be deleted after reading) containing a png image
 # and an extra element choice_id with a string uniquely identifying the choice. This string is returned by input$[inputId]_select
 #
-updateSlider = function(session, inputId, choices){
-  data = lapply(choices, function(imageinfo)
+updateSlider = function(session, inputId, choices=NULL,selected=NULL, error=NULL){
+  msg = list(id=inputId)
+  if(!is.null(error))
   {
-
-    txt = base64Encode(readBin(imageinfo$src, "raw", file.info(imageinfo$src)[1, "size"]), "txt")
-    unlink(imageinfo$src)
-    list(src = paste0("data:image/png;base64,",txt), image_id = imageinfo$choice_id)
-  })
-
-  session$sendCustomMessage(type='updateSlider', message=list(id=inputId, data=data))
+    msg$error=error
+  } else
+  {
+    if(!is.null(choices))
+    {
+      msg$data = lapply(choices, function(imageinfo)  {
+    
+        txt = base64Encode(readBin(imageinfo$src, "raw", file.info(imageinfo$src)[1, "size"]), "txt")
+        unlink(imageinfo$src)
+        list(src = paste0("data:image/png;base64,",txt), image_id = imageinfo$choice_id)
+      })
+    }
+    if(!is.null(selected))
+      msg$selected = selected
+  }
+  session$sendCustomMessage(type='updateSlider', message=msg)
 }
 
 
@@ -398,6 +455,21 @@ updateImgSelect = function(session, inputId, choices=NULL, selected=NULL, group_
   session$sendInputMessage(inputId, data)
 }
 
+listInput = function(inputId, label=NULL, class=NULL, ...) 
+{
+  label = if.else(is.null(label),'',tags$p(tags$b(label)))
+  tags$div(label,
+           class=paste(c(class,'inputList'), collapse=' '), 
+           id=inputId, ...)
+}
+
+updateListInput = function(session, inputId, fields=NULL, value=NULL)
+{
+  session$sendInputMessage(inputId, toJSON(dropNulls(list(fieldset=fields, value=as.list(value))),auto_unbox=TRUE))
+}
+
+
+
 download_buttons = function(dt_id)
 {
   tags$div(downloadButton(paste0(dt_id,'_xl_download'), ''),
@@ -424,5 +496,36 @@ dt_buttons = function(dt_id, title = '', btn_options = NULL )
          action = unbox(JS(paste0("function(){ $('#",dt_id,"_csv_download').get(0).click()}"))))
   )
 }
+
+dt_foot_summary = function(df)
+{
+  out=list(tags$td(tags$i('Summary:'),style='vertical-align:top;'))
+  any_plots = FALSE
+  
+  for(cn in colnames(df)[2:ncol(df)])
+  {
+    fp = footplot_html(df[[cn]])
+    if(is.null(fp))
+    {
+      out[[cn]] = tags$td()
+    } else
+    {
+      any_plots = TRUE
+      out[[cn]] = fp
+    }
+    
+  }
+
+  names(out) = NULL
+  if(any_plots)
+  {
+    tags$tfoot(do.call(tags$tr,out),class='dt-footer-plots')
+  } else
+  {
+    tags$tfoot(do.call(tags$tr,lapply(1:ncol(df),function(i) tags$tr())))
+  }
+  
+}
+
 
 

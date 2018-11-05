@@ -1,8 +1,5 @@
 
 
-
-
-
 # based on: https://stackoverflow.com/questions/8918753/r-help-page-as-object
 
 Rd2list <- function(Rd){
@@ -28,8 +25,8 @@ Rd2list <- function(Rd){
 
 getHelpList <- function(...){
   thefile <- help(...)
-  myrd <- utils.getHelpFile(thefile);
-  Rd2list(myrd);
+  myrd <- utils.getHelpFile(thefile)
+  Rd2list(myrd)
 }
 
 
