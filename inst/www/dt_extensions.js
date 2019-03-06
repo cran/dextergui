@@ -65,7 +65,7 @@ $.extend(dtread_binding, {
         colnames = colnames.slice(0,colnames.nthIndexOf(colnames[0],2));
       }
       var res = {};
-	  console.log(colnames)
+	 // console.log(colnames)
       $.each(colnames , function(i,n)
       {
         res[n] = dt.column(i, {page: 'all'}).data().toArray();
@@ -165,7 +165,7 @@ jQuery(function()
         }
 		else
 		{
-			editor.width(td.width()-2)
+			editor.width(td.width()-2);
 		}
 		editor.val(old_data);
         editor.css('position','relative');        
@@ -199,7 +199,7 @@ jQuery(function()
           {
             td.text($(this).val());
           }
-		  td.css('max-width','')
+		  td.css('max-width','');
           $(this).remove();
         });
     
@@ -681,5 +681,3 @@ update_footplot = function(td, html)
 	td.find('canvas').css('display','block');	
 
 }
-
-

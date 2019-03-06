@@ -15,8 +15,9 @@
 #' The best results are achieved when the gui is opened in a browser (Chrome, Brave, FireFox). Somewhat
 #' less aesthetically pleasing results are achieved in Internet Explorer. The Edge browser is not supported at this time.
 #' 
-#' The native RStudio browser does not currently support downloads of plots and tables. Starting the gui
-#' in your native browser automatically can be achieved in multiple ways. One way shown below is to set the shiny.launch.browser option to true.
+#' The RStudio browser does not currently support downloads of plots and tables. Starting the gui
+#' in your default browser automatically can be achieved in several ways. One way, shown below, 
+#' is to set the \code{shiny.launch.browser} option to \code{TRUE}.
 #' 
 #' @examples
 #' \dontrun{
@@ -42,7 +43,7 @@ if(!is.null(dbpath))
 db = open_project(dbpath)
 default_reactive = list(rules = NULL, new_rules = NULL, ctt_items=NULL, ctt_booklets=NULL,
 inter_booklet = NULL, inter_plot_items = NULL, item_properties=NULL,
-import_data=NULL, parms=NULL, person_abl = NULL, selected_ctt_item = NULL,
+import_data=NULL, import_data_long=NULL, parms=NULL, person_abl = NULL, selected_ctt_item = NULL,
 person_properties=NULL, new_person_properties = NULL, abl_tables=NULL,
 abl_varinfo=NULL, oplm_preview=NULL, plausible_values=NULL,
 ctt_items_settings = list(keep_search = FALSE), 
@@ -58,11 +59,6 @@ shinyFileSave(input, 'start_new_project_from_oplm_dbname', filetypes=c('db','sql
 shinyFileChoose(input, 'open_proj_fn', roots = roots, filetypes=c('db','sqlite'))
 shinyFileSave(input, 'new_proj_fn', roots = roots, filetypes=c('db','sqlite'), session=session, restrictions=system.file(package='base'))
 shinyFileSave(input, 'start_new_project_from_oplm_dbname', filetypes=c('db','sqlite'), roots = roots, session=session, restrictions=system.file(package='base'))}
-observeEvent(input$start_new_project_from_oplm_dbname,{
-dbpth = parseSavePath(roots, input$start_new_project_from_oplm_dbname)
-req(dbpth)
-updateTextInput(session, 'start_new_project_from_oplm_dbname_display',
-value = dbpth[1,1])})
 init_project = function(){
 show('project_load_icon')
 hide('prj_alter_rules')
@@ -74,6 +70,7 @@ covariates = setdiff(dbListFields(db, 'dxpersons'),'person_id')
 updateSelectInput(session,'prs_abl_plot_variable', choices = covariates)
 updateSelectInput(session,'prs_abl_plot_fill', choices = covariates)
 output$data_import_result = renderUI({})
+output$data_import_result_long = renderUI({})
 updateSlider(session, 'enorm_slider',list())
 updateSelectInput(session, 'pp_booklet', choices = booklets)
 for(nm in names(default_reactive)){ values[[nm]] = default_reactive[[nm]] }
@@ -213,6 +210,11 @@ out[[pull(pos, .data$name)[i]]] = substring(values$oplm_preview, pull(pos, .data
 out = as.data.frame(out)}
 colnames(out) = gsub('^skip.+$','',colnames(out))
 out}, bordered=FALSE, spacing='xs', caption='.dat file preview, top 10 rows',caption.placement='top')
+observeEvent(input$start_new_project_from_oplm_dbname,{
+dbpath = parseSavePath(roots, input$start_new_project_from_oplm_dbname)
+req(dbpath)
+updateTextInput(session, 'start_new_project_from_oplm_dbname_display',
+value = dbpath$name)})
 observeEvent(input$go_start_new_project_from_oplm,{
 new_proj_fn = parseSavePath(roots, input$start_new_project_from_oplm_dbname)
 data_file = input$start_new_project_from_oplm_dat_path
@@ -470,22 +472,25 @@ df2html(unknown_rsp, class="min-table",
 style="max-height:20em; overflow-y:auto;display:inline-block;"))}})
 output$data_preview = renderTable({
 req(values$import_data)
-preview = dbGetQuery(db,'SELECT item_id AS column FROM dxItems;') %>% 
-add_column(type = 'item', change = '') %>%
-right_join(tibble(column = colnames(values$import_data), 
-values = sapply(slice(values$import_data,1:10),paste, collapse=', ')), by='column')
-preview[grepl('person_id', preview$column, ignore.case=TRUE),'type'] = 'person identifier'
-preview[is.na(preview$type) & tolower(preview$column) %in% dbListFields(db, 'dxpersons'), 'type'] = 'covariate'
+reserved_names = c('person_id','item_id','item_position',
+'response','item_score','booklet_id')
+preview = tibble(column = trimws(colnames(values$import_data)), 
+type = 'ignored',
+change = '',
+values = paste0(substring(
+sapply(slice(values$import_data,1:10),paste, collapse=', '),
+1,100),', ...')) 
+preview$type[tolower(preview$column) %in% dbListFields(db, 'dxpersons')] = 'person property'
+preview$type[preview$column %in% get_items(db)$item_id] = 'item'
+preview$type[tolower(preview$column) == 'person_id'] = 'person identifier'
 btn = paste0('<button type="button" onclick="',"
 me = $(this); 
 Shiny.onInputChange('add_covariate',me.closest('tr').find('td:first-child').text());
-me.closest('tr').find('td:nth-child(2)').text('covariate');
+me.closest('tr').find('td:nth-child(2)').text('person property');
 me.remove();",
 '">add as person property</button>')
-preview[is.na(preview$type),'change'] = btn
-preview[is.na(preview$type),'type'] = 'ignored'
-preview$values = paste0(substring(preview$values,1,100),', ...')
-preview = mutate(preview, column = htmlEscape(column), values = htmlEscape(values))
+preview$change[preview$type == 'ignored' & !(preview$column %in% reserved_names)] = btn
+preview = mutate(preview, column = htmlEscape(.data$column), values = htmlEscape(.data$values))
 colnames(preview) = c('column','import as','','values')
 preview}, sanitize.text.function = identity, caption='Response data preview')
 observeEvent(input$add_covariate, {
@@ -497,9 +502,7 @@ if(typeof(col) == 'integer' || (typeof(col) == 'character' && all(grepl('^\\d+(\
 dflt[var] = as.integer(NA)} else if(is.numeric(col) || (typeof(col) == 'character' && all(grepl('^\\d+(\\.\\d+)?$', col, perl = TRUE)))) {
 dflt[var] = as.double(NA)} else{
 dflt[var] = ""}
-dummy = data.frame(person_id=1)
-dummy[[var]] = ''
-add_person_properties(db, person_properties = slice(dummy,0), default_values = dflt) 
+add_person_properties(db, default_values = dflt) 
 session$sendCustomMessage(type = 'set_js_vars', 
 message=list(data = list(variables = get_variables(db))))}})
 observeEvent(input$go_import_data, {
@@ -511,17 +514,17 @@ if(booklet_id == '')
 stop('please provide a booklet_id')
 result = add_booklet(db, values$import_data, booklet_id = booklet_id, auto_add_unknown_rules=TRUE)
 n = nrow(values$import_data)
-values$import_data = NULL
-reset('data_file')
-init_project()
 msg = list(
 hr(),
 tags$p(tags$i('Most recently imported:')),
 tags$p(
+tags$b('File: '),
+tags$span(basename(input$data_file$name))),
+tags$p(
 tags$b('Booklet: '),
 tags$span(booklet_id)),
 tags$p(
-tags$b('Responses: '),
+tags$b('Respondents: '),
 tags$span(n)),
 tags$p(
 tags$b('Items: '),
@@ -534,7 +537,67 @@ if('columns_ignored' %in% names(result) && length(result$columns_ignored > 0 ))
 msg = append(msg, 
 list(tags$p(tags$b('Columns ignored: '),
 tags$span(paste(result$columns_ignored, collapse=', ')))))
+values$import_data = NULL
+reset('data_file')
+init_project()
 output$data_import_result = renderUI(tagList(msg))})})
+observeEvent(input$data_file_long,{
+data_file = input$data_file_long
+values$import_data_long = if.else(is.null(data_file), NULL, read_spreadsheet(data_file$datapath)) %>%
+rename_all(tolower)})
+output$data_preview_long = renderTable({
+req(values$import_data_long)
+values$import_data_long %>%
+slice(1:20) %>%
+mutate_if(function(x){is.numeric(x) && all(x %% 1 == 0)}, as.integer)}, caption='Response data preview (rows 1-20)')
+output$show_data_unknown_rsp_long = renderUI({
+req(values$import_data_long)
+missing_col = setdiff(c('item_id', 'person_id', 'response','booklet_id'), colnames(values$import_data_long))
+if(length(missing_col) > 0){
+tagList(tags$p(tags$b('Your data file should contain column(s):')), 
+do.call(tags$ul,lapply(missing_col, tags$li)))} else{
+unknown_items = setdiff(values$import_data_long$item_id,
+dbGetQuery(db,'SELECT item_id FROM dxItems;')$item_id)
+if(length(unknown_items) > 0){
+tagList(tags$p('The following items are unknown in your project, 
+you will have to import scoring rules first (see the project page)'),
+df2html(tibble(item_id=unknown_items), class="min-table",
+style="max-height:20em; overflow-y:auto;display:inline-block;"))} else{
+unknown_rsp = values$import_data_long%>%
+mutate(response = if_else(is.na(.data$response), 'NA', as.character(.data$response))) %>%
+distinct(.data$item_id, .data$response) %>%
+anti_join(get_rules(db), by=c('item_id','response')) %>%
+arrange(.data$item_id, .data$response)
+if(nrow(unknown_rsp) == 0){
+NULL} else{
+unknown_rsp$score = 0L
+tagList(tags$p('The following responses are unknown and will be scored as 0:'),
+df2html(unknown_rsp, class="min-table",
+style="max-height:20em; overflow-y:auto;display:inline-block;"))}}}})
+observeEvent(input$go_import_data_long, {
+withBusyIndicatorServer("go_import_data_long",{
+if(is.null(values$import_data_long))
+stop('no response data to import')
+add_response_data(db, values$import_data_long, auto_add_unknown_rules=TRUE)
+msg = tagList(
+hr(),
+tags$p(tags$i('Most recently imported:')),
+tags$p(
+tags$b('File: '),
+tags$span(basename(input$data_file_long$name))),
+tags$p(
+tags$b('Items: '),
+tags$span(n_distinct(values$import_data_long$item_id))),
+tags$p(
+tags$b('Persons: '),
+tags$span(n_distinct(values$import_data_long$person_id))),
+tags$p(
+tags$b('Responses: '),
+tags$span(nrow(values$import_data_long))))
+values$import_data_long = NULL
+reset('data_file_long')
+init_project()
+output$data_import_result_long = renderUI(msg)})})
 output$inter_booklets = renderDataTable({
 req(values$ctt_booklets)
 cdef = list(list(targets = ncol(values$ctt_booklets)-1, 

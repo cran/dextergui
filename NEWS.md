@@ -1,8 +1,11 @@
-# dextergui 0.1.4
+# dextergui 0.1.6
+
+* import normalized response data
+
+# dextergui 0.1.5
 
 * Added example data sets
 * new feature: plausible values
-* 
 
 # dextergui 0.1.4
 

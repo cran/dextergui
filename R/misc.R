@@ -71,7 +71,8 @@ delayed_list = setRefClass('delayed_list',
     },
     get = function(name)
     {
-      if(inherits(data_[[name]], 'delay')) data_[[name]] <<- eval(data_[[name]]$qtexpr, envir = data_[[name]]$env)
+      if(inherits(data_[[name]], 'delay')) 
+        data_[[name]] <<- eval(data_[[name]]$qtexpr, envir = data_[[name]]$env)
       return(data_[[name]])
     }
 ))
