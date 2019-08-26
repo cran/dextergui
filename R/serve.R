@@ -8,8 +8,9 @@
 #' 
 #' @param dbpath path to a dexter project database
 #' or NULL, in which case you can select a project after starting dextergui
-#' @param wd where dextergui looks for and saves project files, defaults to current working directory. 
-#' Within the gui you can move to subdirectories of \code{wd} but not further up the tree than \code{wd}.
+#' @param wd where dextergui first looks for and saves project files, defaults to current working directory. 
+#' @param roots volumes or paths on your hard drive available for opening and saving project files. Set NULL  
+#' to use all accessible volumes
 #' 
 #' @details
 #' The best results are achieved when the gui is opened in a browser (Chrome, Brave, FireFox). Somewhat
@@ -31,8 +32,34 @@
 #' 
 #' 
 #' 
-dextergui = function(dbpath = NULL, wd = getwd()){
-roots = c('.' = normalizePath(wd))
+dextergui = function(dbpath = NULL, wd = getwd(), roots = NULL){
+if(Sys.info()["sysname"] == 'Windows'){
+restricted = tibble(name = trimws(system("wmic logicaldisk get Caption", intern = TRUE)),
+size = trimws(system("wmic logicaldisk get Size", intern = TRUE))) %>%
+filter(!grepl('^\\d+$',.data$size,perl=TRUE) & !(.data$name %in% c('Caption',''))) %>%
+pull(.data$name)} else{
+restricted = "><"}
+if(is.null(roots)){
+roots = function(){
+v = getVolumes()()
+v[!apply(sapply(restricted, startsWith, x=v), 1, any)]} 
+vol = roots()} else{
+roots = roots[!apply(sapply(restricted, startsWith, x=roots), 1, any)]
+vol = roots
+if(is.null(names(roots)))
+stop('roots must be a named vector')}
+if(!is.character(wd) || length(wd)!=1)
+stop('wd must be a string')
+wd = trimws(wd)
+if(!endsWith(wd,':'))
+wd = normalizePath(wd)
+wd = unlist(strsplit(wd,':',fixed=TRUE))
+if(length(wd) == 2){
+default_root = names(vol)[startsWith(tolower(vol), tolower(paste0(wd[1],':')))]
+if(length(default_root) != 1){
+default_root = default_path = ""} else{
+default_path = wd[2]}} else{
+default_root = default_path = ""}
 if(!is.null(dbpath) && !file.exists(dbpath))
 stop(paste0("file '", dbpath, "' not found"))
 options(shiny.usecairo = TRUE)
@@ -48,17 +75,23 @@ person_properties=NULL, new_person_properties = NULL, abl_tables=NULL,
 abl_varinfo=NULL, oplm_preview=NULL, plausible_values=NULL,
 ctt_items_settings = list(keep_search = FALSE), 
 update_person_properties=TRUE, update_item_properties=TRUE, update_enorm_plots=FALSE,
+distr_legend=NULL,
 project_name='No project loaded')
 start_reactive = list()
 values = do.call(reactiveValues, modifyList(default_reactive, start_reactive, keep.null=TRUE))
 interaction_models = delayed_list$new()
-if(tolower(Sys.info()['sysname']) == "windows" && substr(roots[1],1,2) %in% c('\\\\','//')){
-shinyFileChoose(input, 'open_proj_fn', roots = roots, filetypes=c('db','sqlite'), updateFreq=15000)
-shinyFileSave(input, 'new_proj_fn', roots = roots, filetypes=c('db','sqlite'), session=session, restrictions=system.file(package='base'), updateFreq=15000)
-shinyFileSave(input, 'start_new_project_from_oplm_dbname', filetypes=c('db','sqlite'), roots = roots, session=session, restrictions=system.file(package='base'), updateFreq=15000)} else{
-shinyFileChoose(input, 'open_proj_fn', roots = roots, filetypes=c('db','sqlite'))
-shinyFileSave(input, 'new_proj_fn', roots = roots, filetypes=c('db','sqlite'), session=session, restrictions=system.file(package='base'))
-shinyFileSave(input, 'start_new_project_from_oplm_dbname', filetypes=c('db','sqlite'), roots = roots, session=session, restrictions=system.file(package='base'))}
+shinyFileChoose(input, 'open_proj_fn', filetypes=c('db','sqlite'),
+roots = roots,
+defaultPath = default_path,
+defaultRoot = default_root)
+shinyFileSave(input, 'new_proj_fn', filetypes=c('db','sqlite'), 
+roots = roots,
+defaultPath = default_path,
+defaultRoot = default_root)
+shinyFileSave(input, 'start_new_project_from_oplm_dbname', filetypes=c('db','sqlite'), 
+roots = roots,
+defaultPath = default_path,
+defaultRoot = default_root)
 init_project = function(){
 show('project_load_icon')
 hide('prj_alter_rules')
@@ -84,15 +117,17 @@ updateSelectInput(session, 'pp_person_prop', choices = colnames(persons)[-1])
 updateSelectInput(session, 'pp_item_prop', choices = colnames(items)[-1])
 interaction_models$clear()
 if(length(booklets) > 0){
-data = dexter:::get_resp_data(db,summarised=FALSE)
+data = get_resp_data(db,summarised=FALSE,retain_person_id=FALSE)
 for(bkl in booklets){
 env = new.env()
 env$bkl = eval(bkl)
-interaction_models$assign(bkl, fit_inter(resp_data_bkl(data, bkl)), env=env)}
+interaction_models$assign(bkl, {fit_inter(resp_data_bkl(data, bkl))}, env=env)}
 tia = tia_tables(data, type='raw')
-sparks = dexter:::get_resp_data(data, summarised=TRUE)$x %>% 
-group_by(booklet_id) %>%
-summarise(test_score = sparkbox_vals(.data$sumScore))
+sparks = data$x %>%
+group_by(.data$booklet_id) %>%
+summarise(test_score = sparkbox_vals(.data$booklet_score)) %>%
+ungroup() %>%
+mutate(booklet_id = as.character(.data$booklet_id))
 tia$testStats = tia$testStats %>%
 mutate(alpha = round(.data$alpha,3), meanP = round(.data$meanP,3), meanRit = round(.data$meanRit,3), meanRir = round(.data$meanRir,3)) %>%
 inner_join(sparks, by='booklet_id')
@@ -209,7 +244,8 @@ for(i in 1:nrow(pos)){
 out[[pull(pos, .data$name)[i]]] = substring(values$oplm_preview, pull(pos, .data$begin)[i], coalesce(pull(pos, .data$end)[i], 10000L))}
 out = as.data.frame(out)}
 colnames(out) = gsub('^skip.+$','',colnames(out))
-out}, bordered=FALSE, spacing='xs', caption='.dat file preview, top 10 rows',caption.placement='top')
+out}, 
+bordered=FALSE, spacing='xs', caption='.dat file preview, top 10 rows',caption.placement='top')
 observeEvent(input$start_new_project_from_oplm_dbname,{
 dbpath = parseSavePath(roots, input$start_new_project_from_oplm_dbname)
 req(dbpath)
@@ -250,7 +286,7 @@ close_project(db)
 db <<- example_db(input$example_datasets)
 values$ctt_items_settings$keep_search = FALSE
 init_project()
-values$project_name = paste(input$example_datasets,'_example')
+values$project_name = paste0(input$example_datasets,'_example')
 values$ctt_items_settings$keep_search = TRUE})
 observeEvent(input$rules_file,{
 input_file = input$rules_file
@@ -619,12 +655,12 @@ list(exportOptions = list(columns=':not(:last-child)'))),
 searching = FALSE, pageLength = 15, scrollX = TRUE, autoWidth=FALSE, dom='<"dropdown" B>lrtip',
 initComplete = JS("dt_btn_dropdown")))})
 output$inter_booklets_xl_download = downloadHandler(
-filename = function(){paste0(gsub('\\.\\w+$','',basename(db@dbname), perl=TRUE),'_ctt_booklets.xlsx')},
+filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_ctt_booklets.xlsx')},
 content = function(file) {
 write_xlsx(select(values$ctt_booklets, -.data$test_score), file)}
 )
 output$inter_booklets_csv_download = downloadHandler(
-filename = function(){paste0(gsub('\\.\\w+$','',basename(db@dbname), perl=TRUE),'_ctt_booklets.csv')},
+filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_ctt_booklets.csv')},
 content = function(file) {
 write.csv2(select(values$ctt_booklets, -.data$test_score), file, row.names = FALSE, fileEncoding = "utf8")}
 )
@@ -645,10 +681,16 @@ error='Cannot compute the interaction model because the number of responses is s
 return(NULL);}
 f = try(interaction_models$get(values$inter_booklet), silent=TRUE)
 if(inherits(f,"try-error")){
+print(f)
 updateSlider(session, 'interslider', 
 error='Cannot compute the interaction model for this booklet')
 return(NULL);}
-updateSlider(session, 'interslider',
+selected = NULL
+isolate({
+if(!is.null(input$interslider_select) && input$interslider_select %in% values$inter_plot_items)
+selected = input$interslider_select})
+updateSlider(session, 'interslider', selected=selected,
+choices =
 lapply(values$inter_plot_items, function(item){
 outfile = tempfile(fileext = '.png')
 png(outfile, width = 200, height = 140)
@@ -704,12 +746,12 @@ initComplete = JS(paste0(
 dt_btn_dropdown(dtsettings);
 dt_show_row(dtsettings,',selected-1,');}'))))})
 output$ctt_items_xl_download = downloadHandler(
-filename = function(){paste0(gsub('\\.\\w+$','',basename(db@dbname), perl=TRUE),'_ctt_items.xlsx')},
+filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_ctt_items.xlsx')},
 content = function(file) {
 write_xlsx(ctt_items_table(values$ctt_items, input$ctt_items_averaged), file)}
 )
 output$ctt_items_csv_download = downloadHandler(
-filename = function(){paste0(gsub('\\.\\w+$','',basename(db@dbname), perl=TRUE),'_ctt_items.csv')},
+filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_ctt_items.csv')},
 content = function(file) {
 write.csv2(ctt_items_table(values$ctt_items, input$ctt_items_averaged), file, 
 row.names = FALSE, fileEncoding = "utf8")}
@@ -739,29 +781,16 @@ values$selected_ctt_item = NULL} else{
 values$selected_ctt_item = ctt_items_table(values$ctt_items, input$ctt_items_averaged)[input$ctt_items_rows_selected,]}}) 
 output$ctt_selected_item = renderUI({if(!is.null(values$selected_ctt_item)) values$selected_ctt_item$item_id})
 output$ctt_plot = renderPlot({req(db, values$selected_ctt_item);distr_plot()})
-distr_plot = function(){
+distr_plot = function(update_legend=TRUE){
 ctt_item = values$selected_ctt_item
 item_id = pull(ctt_item, 'item_id')
 if('booklet_id' %in% names(ctt_item)){
 booklet = pull(ctt_item, booklet_id)
-distractor_plot(db, {booklet_id==booklet}, item = item_id,main='position $item_position in $booklet_id',sub=NULL,legend=FALSE)} else{
+lgnd = distractor_plot(db, predicate={booklet_id==booklet}, item_id = item_id,main='pos. $item_position in $booklet_id',sub=NULL,legend=FALSE)} else{
 isolate({
 booklets = values$ctt_items %>% 
-filter(.data$item_id==!!item_id & .data$n>1)
-if(anyNA(booklets$rit)){
-suspected = filter(booklets, is.na(.data$rit))
-bk_no_variation = dbGetQuery(db,
-'WITH P1 AS 
-(SELECT booklet_id, person_id, SUM(item_score) AS bsc
-FROM dxResponses 
-INNER JOIN dxScoring_rules USING(item_id, response)
-WHERE booklet_id=:booklet_id
-GROUP BY booklet_id, person_id) 
-SELECT booklet_id FROM P1
-GROUP BY booklet_id HAVING MAX(bsc)=MIN(bsc);',
-select(suspected,.data$booklet_id))
-booklets = anti_join(booklets, bk_no_variation, by='booklet_id')}
-booklets = booklets$booklet_id})
+filter(.data$item_id==!!item_id & .data$n>1) %>%
+pull(.data$booklet_id)})
 ly = matrix_layout(length(booklets)) 
 if(ncol(ly)<=3){
 main = 'item $item_position in $booklet_id'
@@ -770,13 +799,15 @@ main = '$booklet_id'
 axes=FALSE
 par(mar=c(1,1,1,1))}
 layout(ly)
-distractor_plot(db, item = item_id, {booklet_id %in% booklets},main=main,sub=NULL,legend=FALSE,axes=axes)}}
+lgnd = distractor_plot(db, item_id = item_id, predicate={booklet_id %in% booklets},main=main,sub=NULL,legend=FALSE,axes=axes, col=qcolors)}
+if(update_legend)
+values$distr_legend = lgnd}
 output$ctt_plot_download = downloadHandler(
 filename = function(){
 paste0('distr_',values$selected_ctt_item$item_id,'.png')},
 content = function(file){
 png(filename=file, type='cairo-png', width=960,height=640)
-distr_plot()
+distr_plot(FALSE)
 dev.off()},
 contentType = "image/png"
 )
@@ -789,22 +820,13 @@ tags$iframe(srcdoc = item$item_html)} else if('item_href' %in% colnames(item)){
 tags$iframe(src = item$item_href)   } else if('item_screenshot' %in% colnames(item)){
 tags$img(src = paste0("data:image/png;base64,", item$item_screenshot))}})
 output$item_rules = renderDataTable({
-req(db, values$selected_ctt_item)
+req(db, values$distr_legend)
 ctt_item = values$selected_ctt_item
-df = dbGetQuery(db, paste0(
-'WITH cnts AS (
-SELECT item_id, response, COUNT(*) AS n 
-FROM dxResponses
-WHERE item_id=:item_id',
-ifelse('booklet_id' %in% colnames(ctt_item),' AND booklet_id=:booklet_id ',' '),
-'GROUP BY item_id, response)
-SELECT item_id, response, COALESCE(n,0) AS n, item_score, item_score AS old_item_score
-FROM dxScoring_rules 
-INNER JOIN cnts USING(item_id, response)
-WHERE dxScoring_rules.item_id=:item_id
-ORDER BY n DESC, response;'),
-suppressWarnings(select(values$selected_ctt_item, one_of('item_id', 'booklet_id'))))
-df = add_column(df, legend = dexter:::qcolors(nrow(df)), .after = 1)
+df = dbGetQuery(db, 
+'SELECT item_id, response, item_score FROM dxScoring_rules 
+WHERE item_id=?;', values$selected_ctt_item$item_id) %>%
+inner_join(values$distr_legend, by='response') %>%
+select(.data$item_id,legend=.data$color, .data$response, .data$n, .data$item_score)
 sketch = tags$table(
 class = "compact readable",
 tableHeader(c('item_id','','response','n','score','')),
@@ -816,6 +838,7 @@ tags$td(paste('avg: ',ctt_item$meanScore), style='text-align: right;'),
 tags$td()),
 style="font-style:italic;"))
 df$n = paste(df$n, sum(df$n),sep=',')
+df$old_item_score = df$item_score
 runjs("$('#go_save_ctt_item_rules').removeClass('btn-primary');")
 datatable(df, container = sketch, selection = 'none',  rownames = FALSE, class = "compact readable",
 options = list(autoWidth = FALSE,
@@ -857,35 +880,38 @@ output$design_plot = renderForceNetwork({
 req(db)
 values$ctt_items 
 if(trimws(input$enorm_predicate == '')){
-design = get_design(db, format='long') %>%
-inner_join(get_booklets(db), by='booklet_id') %>%
-filter(.data$n_persons > 0) %>%
-select(.data$booklet_id, .data$item_id)} else{
-design = try(eval(parse(text=paste0("dexter:::get_resp_data(db, ",
-"qtpredicate= eval(substitute(quote(",input$enorm_predicate,"))))$design"))),
+design = design_info(db)} else{
+design = try(eval(parse(text=paste0("design_info(db, ",
+"predicate={",input$enorm_predicate,"})"))),
 silent=TRUE)
 if(inherits(design,'try-error')){
 err_message = gsub('\n',' ', as.character(design))
 if(grepl('no such column', err_message, fixed=TRUE)){
-output$enorm_design_connected = renderUI({gsub('^.+no such column','unknown variable',err_message, perl=TRUE)})} else{
+output$enorm_design_connected = renderUI({gsub('^.+no such column','unknown variable',err_message, perl=TRUE)})} else if(grepl('no data', err_message, fixed=TRUE)){
+output$enorm_design_connected = renderUI({'no data selected'})} else {
 output$enorm_design_connected = renderUI({'invalid predicate'})}
 return(NULL)}}
-if(nrow(design) == 0){
-output$enorm_design_connected = renderUI({'no responses selected'})
-return(NULL)} 
-im = as.matrix(table(design$item_id, paste0(design$booklet_id,'\u200C')))
-output$enorm_design_connected = renderUI({paste0(length(unique(design$booklet_id)),
+output$enorm_design_connected = renderUI({paste0(n_distinct(design$design$booklet_id),
 ' booklet(s), design is ',
-ifelse(im_is_connected(im), 'connected', 'NOT connected'))})
-if(ncol(im) >= 80){
-wm = crossprod(im, im)
-diag(wm) = 0
-g = graph_from_adjacency_matrix(wm, mode = 'undirected',weighted=TRUE)} else{
-g = graph_from_incidence_matrix(im)}
-wc = cluster_walktrap(g)
-members = membership(wc)
-g = igraph_to_networkD3(g, group = members)
-forceNetwork(Links = g$links, Nodes = g$nodes, fontSize=11, zoom=TRUE,
+ifelse(design$connected, 'connected', 'NOT connected'))})
+wm = design$adj_matrix$weighted_by_items
+if(ncol(wm) >= 80){
+colnames(wm) = paste0(colnames(wm),'\u200C')
+tri = upper.tri(wm)
+links = tibble(source = rep(1:ncol(wm)-1L,nrow(wm))[tri], target = rep(1:ncol(wm)-1L,each=nrow(wm))[tri], 
+value = as.vector(wm[tri])) %>% 
+filter(value>0)
+nodes = tibble(name=colnames(wm), group = 1:ncol(wm))} else{
+nodes = bind_rows(arrange(design$testlets, .data$item_id), 
+tibble(item_id=paste0(colnames(wm),'\u200C'), 
+testlet = max(design$testlets$testlet)+1L))
+colnames(nodes) = c('name','group')
+n_itm = n_distinct(design$design$item_id)
+links = design$design %>%
+arrange(.data$booklet_id,.data$item_id) %>%
+mutate(source = dense_rank(.data$item_id) - 1L, target = dense_rank(.data$booklet_id) -1L + n_itm) %>%
+select(.data$source, .data$target)}
+forceNetwork(Links = links, Nodes = nodes, fontSize=11, zoom=TRUE,
 Source = 'source', Target = 'target', opacity=0.7,
 NodeID = 'name', Group = 'group')})
 output$fit_enorm_result = renderUI({
@@ -969,18 +995,22 @@ columnDefs = list(list(className = "dec-3", targets = cdef_target)),
 fnDrawCallback = JS('dt_numcol'),
 initComplete = JS('function(s){dtshrink(s);dt_btn_dropdown(s)}')))})
 output$enorm_coef_xl_download = downloadHandler(
-filename = function(){paste0(gsub('\\.\\w+$','',basename(db@dbname), perl=TRUE),'_enorm_coef.xlsx')},
+filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_enorm_coef.xlsx')},
 content = function(file) {
 write_xlsx(enorm_coef_table(), file)}
 )
 output$enorm_coef_csv_download = downloadHandler(
-filename = function(){paste0(gsub('\\.\\w+$','',basename(db@dbname), perl=TRUE),'_enorm_coef.csv')},
+filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_enorm_coef.csv')},
 content = function(file) {
 write.csv2(enorm_coef_table(), file, row.names = FALSE, fileEncoding = "utf8")}
 )
 observe({
 req(values$parms, input$enorm_slider_nbins, values$update_enorm_plots)
-updateSlider(session, 'enorm_slider',
+isolate({selected = enorm_coef_table()[input$enorm_coef_rows_selected,]$item_id})
+if(length(selected)==0)
+selected=NULL
+updateSlider(session, 'enorm_slider',selected=selected, 
+choices=
 lapply(sort(unique(coef(values$parms)$item_id)), function(item){
 outfile = tempfile(fileext = '.png')
 png(outfile, width = 200, height = 140)
@@ -1098,13 +1128,10 @@ inner_join(tibble(booklet_id = booklets), by='booklet_id')
 xmin = floor(min(abl$theta))
 xmax = ceiling(max(abl$theta))
 ymax = ceiling(1/(min(abl$se, na.rm=T)**2))
-colr = dexter:::qcolors(length(booklets))
+colr = qcolors(length(booklets))
 names(colr) = booklets
-scoretab = values$parms$inputs$bkList[abl_tables_plot_booklet()] %>%
-lapply(function(bk){ tibble(sumScore=0:(length(bk$scoretab)-1), n=bk$scoretab)} ) %>%
-bind_rows(.id = 'booklet_id')
 abl = abl %>%
-inner_join(scoretab, by=c('booklet_id','sumScore'))
+inner_join(values$parms$inputs$scoretab, by=c('booklet_id','booklet_score'))
 offs = (xmax-xmin)/62
 mids = seq(xmin+offs,xmax-offs,length.out=30)
 hist_counts = abl %>%
@@ -1112,7 +1139,7 @@ group_by(.data$theta) %>%
 mutate(x = which.min(abs(mids - .data$theta[1]))) %>%
 ungroup() %>%
 group_by(.data$x) %>%
-summarize(y = sum(.data$n)) %>%
+summarize(y = sum(.data$N)) %>%
 ungroup() %>%
 right_join(tibble(x=1:31), by='x') %>%
 mutate(y = coalesce(.data$y,0L)) %>%
@@ -1139,7 +1166,7 @@ output$abl_tables_plot_ti_hinf = renderUI({
 req(values$abl_tables, input$abl_tables_plot_ti_hov)
 abl = values$abl_tables
 bkl = abl_tables_plot_booklet()
-colr = dexter:::qcolors(length(bkl))
+colr = qcolors(length(bkl))
 names(colr) = bkl
 hover = input$abl_tables_plot_ti_hov
 theta = hover$x
@@ -1171,10 +1198,10 @@ select(values$person_abl, -.data$person_id, -.data$theta),
 function(col){
 tibble(type = typeof(col), n = n_distinct(col))}) %>% 
 bind_rows(.id = 'name')  %>% 
-mutate(fun_indx = case_when(.data$n==1 ~ -2, .data$name=='sumScore' ~ -1, .data$name=='booklet_id' ~ 0,TRUE ~ 1))
+mutate(fun_indx = case_when(.data$n==1 ~ -2, .data$name=='booklet_score' ~ -1, .data$name=='booklet_id' ~ 0,TRUE ~ 1))
 list(
 all = vi,
-nominal = filter(vi, .data$n <= 40 & .data$name != 'sumScore')  %>% arrange(desc(.data$fun_indx), .data$n),
+nominal = filter(vi, .data$n <= 40 & .data$name != 'booklet_score')  %>% arrange(desc(.data$fun_indx), .data$n),
 ordinal = filter(vi,  .data$n > 1 & .data$type %in% c('integer','double')) %>% arrange(desc(.data$fun_indx), .data$n),
 continuous = filter(vi, .data$n > 5 & .data$type %in% c('integer','double'))  %>% arrange(desc(.data$fun_indx), desc(.data$n))
 )})
@@ -1448,13 +1475,13 @@ select(values$plausible_values, -.data$person_id, -grep("PV", names(values$plaus
 function(col){
 tibble(type = typeof(col), n = n_distinct(col), min_ = if.else(is.numeric(col), min(col), -9999))}) %>% 
 bind_rows(.id='name')  %>% 
-mutate(fun_indx = case_when(.data$n==1 ~ -2, .data$name=='sumScore' ~ -1, .data$name=='booklet_id' ~ 0,TRUE ~ 1))
+mutate(fun_indx = case_when(.data$n==1 ~ -2, .data$name=='booklet_score' ~ -1, .data$name=='booklet_id' ~ 0,TRUE ~ 1))
 list(
 all = vi,
-nominal = filter(vi, .data$n <= 40 & .data$name != 'sumScore')  %>% arrange(desc(.data$fun_indx), .data$n),
+nominal = filter(vi, .data$n <= 40 & .data$name != 'booklet_score')  %>% arrange(desc(.data$fun_indx), .data$n),
 ordinal = filter(vi,  .data$n > 1 & .data$type %in% c('integer','double')) %>% arrange(desc(.data$fun_indx), .data$n),
 continuous = filter(vi, .data$n > 5 & .data$type %in% c('integer','double'))  %>% arrange(desc(.data$fun_indx), desc(.data$n)),
-weights = filter(vi, .data$n > 1 & .data$type %in% c('integer','double') & .data$min_ >= 0 & .data$name != 'sumScore')
+weights = filter(vi, .data$n > 1 & .data$type %in% c('integer','double') & .data$min_ >= 0 & .data$name != 'booklet_score')
 )})
 plottypes <- tibble(plot = c("hist", "box", "ecdf", "dens", "bar", "box", "line", "scat"), 
 type = c("nominal", "nominal", "nominal", "nominal", "nominal", "nominal", "ordinal", "continuous"),

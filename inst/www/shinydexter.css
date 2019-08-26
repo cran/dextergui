@@ -1,5 +1,7 @@
 
-body{padding-top:70px;}
+body{
+	padding-top:70px;
+}
 div.navbar-header{
   width:0;
   height:0;
@@ -55,7 +57,6 @@ div.navbar-header{
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-
 
 .btn-err > div{
 	white-space:normal;
@@ -479,10 +480,17 @@ td.numeric, td.dec-1, td.dec-2, td.dec-3{
   border:none;
 }
 
-#oplm_dat td{ 
+#oplm_dat td { 
   border:none;
-  padding-top:1px;
-  padding-bottom:1px;
+  padding: 1px;  
+}
+#oplm_dat th{
+	padding-left:2px;
+	padding-right:2px;
+}
+
+#oplm_dat td:not(:first-child){
+	border-left: 1px solid gray;	
 }
 
 #oplm_dat tbody{

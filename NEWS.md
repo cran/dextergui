@@ -1,3 +1,9 @@
+
+# dextergui 0.2.0
+
+* updated for dexter 1.0
+* easier access to volumes in open-file windows thanks to updates in ShinyFiles
+
 # dextergui 0.1.6
 
 * import normalized response data

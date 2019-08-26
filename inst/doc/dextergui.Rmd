@@ -193,7 +193,7 @@ Once you have estimated a model you can use it in several ways with the tabs bel
 
 ### Abilities
 
-When you have calibrated your model dexter can compute ability estimates for each person. You have a choice of using a Maximimum Likelihood Estimate (MLE) or an Expected a Priori (EAP) estimate with choice of a Jeffreys or a normal prior. There is an extremely rich selection of plots to see how ability is distributed in your population(s). Enriching your data with person properties (see the projects tab) will let you make the most of these. You can also view and download the estimated abilities per person.
+When you have calibrated your model dexter can compute ability estimates for each person. You have a choice of using a Maximum Likelihood Estimate (MLE) or an Expected a Priori (EAP) estimate with choice of a Jeffreys or a normal prior. There is an extremely rich selection of plots to see how ability is distributed in your population(s). Enriching your data with person properties (see the projects tab) will let you make the most of these. You can also view and download the estimated abilities per person.
 
 ![](img/abplot.PNG){width=75%}
 

@@ -11,6 +11,35 @@ is_integer_ = function(x) is.integer(x) || (is.numeric(x) && all(x %% 1 == 0))
 
 dropNulls = function(x) x[!vapply(x, is.null, FUN.VALUE = logical(1))]
 
+# colors derived from http://colorbrewer2.org
+qcolors = function(n)
+{
+   pal = c("#E41A1C","#377EB8","#4DAF4A","#984EA3","#FF7F00","#FFFF33","#A65628","#F781BF","#999999",
+            "#BC80BD", "#CCEBC5","#FFED6F","#FB8072","#80B1D3","#FDB462","#8DD3C7","#FFFFB3","#BEBADA",
+            "#B3DE69","#A50F15","#08306B","#00441B","#54278F","#fc4E2A","#525252","#66C2A4")
+
+  rep_len(pal,n)
+}
+
+# get_palettes = function(category=c('qual','div','seq','all'), max_colors = 100)
+# {
+#   ctg = match.arg(category)
+#   if(category == 'all')
+#   {
+#     pal = brewer.pal.info %>% mutate_if(is.factor, as.character) %>% add_column(name = rownames(brewer.pal.info))
+#   } else
+#   {
+#     pal = brewer.pal.info %>% mutate_if(is.factor, as.character) %>% add_column(name = rownames(brewer.pal.info))  %>% 
+#       filter(.data$category == ctg)
+#   }
+#   
+#   pal = split(pal, pal$name)
+#   
+#   lapply(pal, function(p){
+#     paste(p$name,paste(brewer.pal(min(p$maxcolors, max_colors), p$name), collapse=' '), sep=';')
+#   } )
+# }
+
 resp_data_bkl = function(rsp, bkl)
 {
   rsp$x = filter(rsp$x, .data$booklet_id == bkl)

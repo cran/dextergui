@@ -491,7 +491,7 @@ update_footplot = function(td, html)
 {
 	td = $(td);
 
-	
+
 	if(typeof html !== "undefined")
 	{
 		var tmp = $(html);

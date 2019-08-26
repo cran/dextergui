@@ -4,14 +4,16 @@
 \alias{dextergui}
 \title{Start dextergui}
 \usage{
-dextergui(dbpath = NULL, wd = getwd())
+dextergui(dbpath = NULL, wd = getwd(), roots = NULL)
 }
 \arguments{
 \item{dbpath}{path to a dexter project database
 or NULL, in which case you can select a project after starting dextergui}
 
-\item{wd}{where dextergui looks for and saves project files, defaults to current working directory. 
-Within the gui you can move to subdirectories of \code{wd} but not further up the tree than \code{wd}.}
+\item{wd}{where dextergui first looks for and saves project files, defaults to current working directory.}
+
+\item{roots}{volumes or paths on your hard drive available for opening and saving project files. Set NULL
+to use all accessible volumes}
 }
 \description{
 Opens a shiny application providing a graphical user interface to dexter.

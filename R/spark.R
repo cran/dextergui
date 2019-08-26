@@ -96,6 +96,7 @@ footplot_html = function(col)
     } 
   } else if(is.integer(col))
   {
+    col = col[is.finite(col)]
     sprk = sparkhist_vals(col,as.what='data')
     return(tags$td(tags$div(tags$div(class='sparkhist', `data-min`=min(col),`data-max`=max(col),
                                           `data-values`=sprk$values,
