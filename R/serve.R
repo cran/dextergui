@@ -33,18 +33,23 @@
 #' 
 #' 
 dextergui = function(dbpath = NULL, wd = getwd(), roots = NULL){
+restricted = NULL
 if(Sys.info()["sysname"] == 'Windows'){
 restricted = tibble(name = trimws(system("wmic logicaldisk get Caption", intern = TRUE)),
 size = trimws(system("wmic logicaldisk get Size", intern = TRUE))) %>%
 filter(!grepl('^\\d+$',.data$size,perl=TRUE) & !(.data$name %in% c('Caption',''))) %>%
-pull(.data$name)} else{
-restricted = "><"}
+pull(.data$name)
+if(length(restricted)==0)
+restricted=NULL} 
 if(is.null(roots)){
 roots = function(){
 v = getVolumes()()
-v[!apply(sapply(restricted, startsWith, x=v), 1, any)]} 
+if(!is.null(restricted)){
+v = v[!apply(sapply(restricted, startsWith, x=v), 1, any)]}
+v} 
 vol = roots()} else{
-roots = roots[!apply(sapply(restricted, startsWith, x=roots), 1, any)]
+if(!is.null(restricted)){
+roots = roots[!apply(sapply(restricted, startsWith, x=roots), 1, any)]}
 vol = roots
 if(is.null(names(roots)))
 stop('roots must be a named vector')}
@@ -59,7 +64,8 @@ default_root = names(vol)[startsWith(tolower(vol), tolower(paste0(wd[1],':')))]
 if(length(default_root) != 1){
 default_root = default_path = ""} else{
 default_path = wd[2]}} else{
-default_root = default_path = ""}
+default_root = NULL
+default_path = ""}
 if(!is.null(dbpath) && !file.exists(dbpath))
 stop(paste0("file '", dbpath, "' not found"))
 options(shiny.usecairo = TRUE)
@@ -141,10 +147,10 @@ values$ctt_booklets = tia$testStats}
 set_js_vars(db, session)
 lapply(c('project_load_icon','oplm_inputs','example_datasets'), hide)
 show('proj_rules_frm')
-if.else(nrow(rules) > 0, show, hide)('proj_items_frm')
-if.else(nrow(persons) > 0, show, hide)('proj_persons_frm')
-if.else(nrow(rules) > 0, enable_panes, disable_panes)('data_pane')
-if.else(nrow(persons) > 0, enable_panes, disable_panes)(c('ctt_pane', 'inter_pane','enorm_pane'))
+if.else(NROW(rules) > 0, show, hide)('proj_items_frm')
+if.else(NROW(persons) > 0, show, hide)('proj_persons_frm')
+if.else(NROW(rules) > 0, enable_panes, disable_panes)('data_pane')
+if.else(NROW(persons) > 0, enable_panes, disable_panes)(c('ctt_pane', 'inter_pane','enorm_pane'))
 if(any(dbListFields(db,'dxItems') %in% c('item_screenshot','item_html','item_href'))){
 show('item-viewer-btn')} else{
 hide(selector = '#item-viewer-img, #item-viewer-btn')}
@@ -168,10 +174,15 @@ message = list(variable = input$varsuggest$variable,
 start = input$varsuggest$start,
 suggestions = dxvar_suggestion(db, input$varsuggest$variable, input$varsuggest$start)))})
 session$onSessionEnded(function(x){ 
-if(!is.null(db)) close_project(db) })
+if(!is.null(db)) close_project(db) 
+if (!interactive()) {
+stopApp()
+q("no")}})
 observeEvent(input$quit_application,{
 req(input$quit_application)
-stopApp()})
+stopApp()
+if (!interactive()) 
+q("no")})
 observeEvent(input$open_proj_fn,{
 open_proj_fn = parseFilePaths(roots, input$open_proj_fn)
 req(open_proj_fn$datapath)
@@ -188,7 +199,7 @@ req(new_proj_fn$datapath)
 if(!is.null(db))
 close_project(db)             
 db <<- start_new_project(as.character(new_proj_fn$datapath),
-rules = tibble(item_id='a',response='b',item_score=0) %>% filter(0==1))
+rules=tibble(item_id=character(0),response=character(0),item_score=integer(0)))
 values$ctt_items_settings$keep_search = FALSE
 init_project()
 values$project_name = gsub('\\.\\w+$','',basename(new_proj_fn$datapath), perl=TRUE)
@@ -694,11 +705,10 @@ choices =
 lapply(values$inter_plot_items, function(item){
 outfile = tempfile(fileext = '.png')
 png(outfile, width = 200, height = 140)
-op = par(mar=rep(0,4))
+par(mar=rep(0,4))
 plot(f, items = item, show.observed = input$inter_show_observed, curtains = input$inter_curtains, 
 summate = input$inter_summate, main=NULL,xlab=NA,ylab=NA,sub=NULL,xaxt='n',yaxt='n', ann=FALSE)
 dev.off()
-par(op)
 list(src = outfile, contentType = 'image/png', choice_id = item)})
 )}, priority = 1)
 output$interslider_plot = renderPlot({
@@ -846,7 +856,6 @@ paging = FALSE,
 scrollY = '300px',
 scrollCollapse = TRUE,
 dom = 't',
-initComplete = JS("function(settings){dtshrink(settings)}"),
 fnDrawCallback = init_sparks(),
 columnDefs = list(list(targets = 5, 
 render = JS("function(data,type,row){
@@ -938,6 +947,7 @@ input$enorm_method,"')")))
 values$parms$xpr = input$enorm_predicate} else{
 values$parms = fit_enorm(db, method=input$enorm_method)}
 show(selector='#enorm_tabs + div.tab-content > div.tab-pane[data-value="enorm_items"] > *')
+show(selector='#enorm_tabs + div.tab-content > div.tab-pane[data-value="new_test"] > *')
 isolate({
 values$update_enorm_plots = (input$enorm_tabs == 'enorm_items')})}
 observeEvent(input$enorm_tabs,{
@@ -992,8 +1002,7 @@ options = list(dom='<"dropdown" B>lrtip',
 buttons =  dt_buttons('enorm_coef'),
 pageLength = 20, scrollX = TRUE,
 columnDefs = list(list(className = "dec-3", targets = cdef_target)),
-fnDrawCallback = JS('dt_numcol'),
-initComplete = JS('function(s){dtshrink(s);dt_btn_dropdown(s)}')))})
+fnDrawCallback = JS('dt_numcol')))})
 output$enorm_coef_xl_download = downloadHandler(
 filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_enorm_coef.xlsx')},
 content = function(file) {
@@ -1014,10 +1023,9 @@ choices=
 lapply(sort(unique(coef(values$parms)$item_id)), function(item){
 outfile = tempfile(fileext = '.png')
 png(outfile, width = 200, height = 140)
-op = par(mar=rep(0,4))
+par(mar=rep(0,4))
 plot(values$parms,item_id=item,nbins=input$enorm_slider_nbins,main='',bty='n',axes=FALSE)
 dev.off()
-par(op)
 list(src = outfile, contentType = 'image/png', choice_id = item)})
 )})
 output$enorm_slider_plot = renderPlot({
@@ -1039,7 +1047,7 @@ contentType = "image/png"
 observe({
 input$ability_method
 input$ability_prior
-if(input$ability_method == 'MLE'){
+if(input$ability_method != 'EAP'){
 runjs('hide_inputs("#ability_prior,#ability_npv,#ability_mu,#ability_sigma")')} else{
 runjs('show_inputs("#ability_prior")')
 if(input$ability_prior == 'normal'){
@@ -1049,12 +1057,12 @@ observe({
 input$ability_tables_method
 input$ability_tables_prior
 runjs('hide_inputs("#ability_tables_use_draw")')
-if(input$ability_tables_method == 'MLE'){
+if(input$ability_tables_method != 'EAP'){
 runjs('hide_inputs("#ability_tables_prior,#ability_tables_npv,#ability_tables_mu,#ability_tables_sigma")')} else{
 runjs('show_inputs("#ability_tables_prior")')
 if(input$ability_tables_prior == 'normal'){
 runjs('show_inputs("#ability_tables_npv,#ability_tables_mu,#ability_tables_sigma")')
-if(values$parms$inputs$method == 'Bayes')
+if(!is.null(values$parms) && values$parms$inputs$method == 'Bayes')
 runjs('show_inputs("#ability_tables_use_draw")')} else{
 runjs('hide_inputs("#ability_tables_npv,#ability_tables_mu,#ability_tables_sigma")')}}})
 observeEvent(input$go_ability, {

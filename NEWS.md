@@ -1,3 +1,6 @@
+# dextergui 0.2.1
+
+* bugfix for failure of dextergui to start on some systems
 
 # dextergui 0.2.0
 

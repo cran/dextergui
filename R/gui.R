@@ -299,6 +299,12 @@ get_ui = function()
 				      uiOutput("abl_tables_plot_ti_hinf"), style='position:relative;'),
              selectizeInput('abl_tables_plot_booklet', 'Choose booklets to plot', c(), multiple = TRUE),
 				      style="padding-left:4em;"))),
+				# tabPanel('Test composition', value='new_test',
+				#          dataTableOutput('new_test_item_select'),
+				#          tableOutput('new_test_matrix'),
+				#          dataTableOutput('new_test_omz'),
+				#          plotOutput('new_test_inf')
+				# ),
 				tabPanel('Items', value='enorm_items',
 				  fluidRow(
 				    column(5,
@@ -307,9 +313,10 @@ get_ui = function()
 				      hidden(multiToggleButton('coef_format', selected='norm',btn_width='3em',style='margin-left:20em;margin-top:-12px;',
 				                        choices=list(norm = tags$span(class="fa fa-list"),
 				                                     denorm = tags$i(class="fa fa-columns")))),
-    				   tags$p(
+    				   tags$div(
     				     dataTableOutput('enorm_coef'),
-    				     download_buttons('enorm_coef')),style="padding-left:2em;"),
+    				     download_buttons('enorm_coef')),
+				      style="padding-left:2em;"),
 				    column(7,
 				      tags$h3('Item fit'),
 				      tags$hr(),
