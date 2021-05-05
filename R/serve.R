@@ -309,7 +309,7 @@ mutate(item_score = as.integer(.data$item_score), item_id = as.character(.data$i
 response = gsub('\\.0+$','',as.character(.data$response), perl=TRUE)) %>%
 select(.data$item_id, .data$response, .data$item_score)
 output$rules_upload_error = renderText({''})} else if(length(setdiff(c('item_id','noptions','key'),colnames(rules))) == 0){
-values$new_rules = keys_to_rules(rules)
+values$new_rules = keys_to_rules(rules %>% mutate(nOptions = as.integer(.data$noptions)))
 output$rules_upload_error = renderText({''})} else{
 output$output$rules_upload_error = renderText({
 paste0('The input file has to contain columns (item_id, item_score, response) ',
@@ -318,7 +318,7 @@ values$new_rules = NULL}})
 output$new_rules_preview = renderTable({
 req(values$new_rules)
 tibble(column = c('item_id','response','item_score'), 
-values = paste0(sapply(values$new_rules[1:10, c('item_id','response','item_score')], paste, collapse = ', '),', ...'))}, caption = 'rules glimpse')
+values = paste0(sapply(values$new_rules[1:10, c('item_id','response','item_score')], paste, collapse = ', '),', ...'))}, caption = 'file preview')
 observeEvent(input$go_import_new_rules,{
 withBusyIndicatorServer("go_import_new_rules",{
 if(is.null(values$new_rules))
@@ -1002,8 +1002,7 @@ options = list(dom='<"dropdown" B>lrtip',
 buttons =  dt_buttons('enorm_coef'),
 pageLength = 20, scrollX = TRUE,
 columnDefs = list(list(className = "dec-3", targets = cdef_target)),
-fnDrawCallback = JS('dt_numcol'),
-initComplete = JS("dt_btn_dropdown")))})
+fnDrawCallback = JS('dt_numcol')))})
 output$enorm_coef_xl_download = downloadHandler(
 filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_enorm_coef.xlsx')},
 content = function(file) {
