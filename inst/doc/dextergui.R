@@ -29,23 +29,34 @@ verbAggrData[1:8,1:8] %>%
   kable(caption="example response data for the verbal aggression dataset (Vansteelandt, 2000)")
 
 ## ---- include=FALSE, message=FALSE--------------------------------------------
-db = start_new_project(verbAggrRules,':memory:')
+db = start_new_project(verbAggrRules,':memory:', person_properties=list(gender='NA'))
+add_item_properties(db, verbAggrProperties)
 add_booklet(db, verbAggrData, "agg")
 tia=tia_tables(db)
 
 ## -----------------------------------------------------------------------------
-tia$testStats %>%
+tia$booklets %>%
   mutate_if(is.double, round, digits=3) %>%
   kable()
 
 ## ---- fig.width=5, fig.height=5-----------------------------------------------
 f=fit_inter(db)
 plot(f, "S1DoScold", show.observed=TRUE)
-close_project(db)
 
 ## -----------------------------------------------------------------------------
-tia$itemStats %>%
+tia$items %>%
   slice(1:10) %>%
   mutate_if(is.double, round, digits=3) %>%
   kable()
+
+## ----fig.width=5,fig.height=5,results='hide'----------------------------------
+get_items(db) %>%
+  mutate(behavior2=if_else(behavior %in% c('Curse','Scold'),'Curse,Scold',behavior)) %>%
+  add_item_properties(db,.)
+
+profile_plot(db, item_property='behavior2', covariate='gender',x='Curse,Scold',main='behavior')
+
+
+## ---- include=FALSE-----------------------------------------------------------
+close_project(db)
 

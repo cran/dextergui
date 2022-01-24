@@ -1,6 +1,6 @@
 # Dextergui
 
-Dextergui is a graphical user interface for the main functionality of [dexter](https://cran.r-project.org/package=dexter) for use in educational and psychological measurement. It offers Classical Test Analysis, Item Response Theory and Data management.
+Dextergui is a graphical user interface for the main functionality of [dexter](https://dexter-psychometrics.github.io/dexter/) for use in educational and psychological measurement. It offers Classical Test Analysis, Item Response Theory and Data management.
 
 ## Installation
 
@@ -11,7 +11,7 @@ or for the development version
 
 ```
 library(devtools)
-install_github('jessekps/dextergui')
+install_github('dexter-psychometrics/dextergui')
 ```
 
 

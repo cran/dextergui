@@ -68,10 +68,11 @@ default_root = NULL
 default_path = ""}
 if(!is.null(dbpath) && !file.exists(dbpath))
 stop(paste0("file '", dbpath, "' not found"))
-options(shiny.usecairo = TRUE)
-options(shiny.maxRequestSize = 100*1024^2)
+backup_opts = options(shiny.usecairo = TRUE, shiny.maxRequestSize = 100*1024^2, dexter.progress=FALSE)
+on.exit({options(backup_opts)})
 server = function(input, output, session){
 db = NULL
+options(shiny.usecairo = TRUE, shiny.maxRequestSize = 100*1024^2, dexter.progress=FALSE)
 if(!is.null(dbpath)) 
 db = open_project(dbpath)
 default_reactive = list(rules = NULL, new_rules = NULL, ctt_items=NULL, ctt_booklets=NULL,
@@ -111,7 +112,6 @@ updateSelectInput(session,'prs_abl_plot_fill', choices = covariates)
 output$data_import_result = renderUI({})
 output$data_import_result_long = renderUI({})
 updateSlider(session, 'enorm_slider',list())
-updateSelectInput(session, 'pp_booklet', choices = booklets)
 for(nm in names(default_reactive)){ values[[nm]] = default_reactive[[nm]] }
 rules = get_rules(db)
 persons = get_persons(db) %>% mutate_if(is_integer_, as.integer)
@@ -119,8 +119,6 @@ values$rules = rules
 items = as_tibble(get_items(db))
 values$item_properties = items[,!colnames(items) %in% c('item_screenshot','item_html','item_href')]
 values$person_properties = persons
-updateSelectInput(session, 'pp_person_prop', choices = colnames(persons)[-1])
-updateSelectInput(session, 'pp_item_prop', choices = colnames(items)[-1])
 interaction_models$clear()
 if(length(booklets) > 0){
 data = get_resp_data(db,summarised=FALSE,retain_person_id=FALSE)
@@ -134,23 +132,21 @@ group_by(.data$booklet_id) %>%
 summarise(test_score = sparkbox_vals(.data$booklet_score)) %>%
 ungroup() %>%
 mutate(booklet_id = as.character(.data$booklet_id))
-tia$testStats = tia$testStats %>%
-mutate(alpha = round(.data$alpha,3), meanP = round(.data$meanP,3), meanRit = round(.data$meanRit,3), meanRir = round(.data$meanRir,3)) %>%
+tia$booklets = tia$booklets %>%
+mutate_if(is.double, round, digits=3) %>% 
 inner_join(sparks, by='booklet_id')
-if(all(grepl('^\\d+$',tia$testStats$booklet_id))){
-tia$testStats = tia$testStats %>%
-arrange(as.integer(.data$booklet_id))
-tia$itemStats =  tia$itemStats %>%
-arrange(.data$item_id, as.integer(.data$booklet_id))}
-values$ctt_items = tia$itemStats
-values$ctt_booklets = tia$testStats}
+if(all(grepl('^\\d+$',tia$booklets$booklet_id))){
+tia$tbooklets = arrange(tia$booklets, as.integer(.data$booklet_id))
+tia$items = arrange(tia$items, .data$item_id, as.integer(.data$booklet_id))}
+values$ctt_items = tia$items
+values$ctt_booklets = tia$booklets}
 set_js_vars(db, session)
 lapply(c('project_load_icon','oplm_inputs','example_datasets'), hide)
 show('proj_rules_frm')
 if.else(NROW(rules) > 0, show, hide)('proj_items_frm')
 if.else(NROW(persons) > 0, show, hide)('proj_persons_frm')
 if.else(NROW(rules) > 0, enable_panes, disable_panes)('data_pane')
-if.else(NROW(persons) > 0, enable_panes, disable_panes)(c('ctt_pane', 'inter_pane','enorm_pane'))
+if.else(NROW(persons) > 0, enable_panes, disable_panes)(c('ctt_pane', 'inter_pane','enorm_pane','DIF_pane'))
 if(any(dbListFields(db,'dxItems') %in% c('item_screenshot','item_html','item_href'))){
 show('item-viewer-btn')} else{
 hide(selector = '#item-viewer-img, #item-viewer-btn')}
@@ -161,7 +157,7 @@ hide(selector="#enorm_tabs + div.tab-content > div.tab-pane > *:not(.well)")
 updateImgSelect(session, inputId = "abp_plotbar",choices=list())}
 if(is.null(db)){
 lapply(c('project_load_icon','proj_items_frm','proj_persons_frm','proj_rules_frm'), hide)
-disable_panes(c( 'ctt_pane', 'inter_pane','data_pane', 'enorm_pane'))} else{
+disable_panes(c( 'ctt_pane', 'inter_pane','data_pane', 'enorm_pane', 'DIF_pane'))} else{
 init_project()}
 output$project_pth = renderText({values$project_name})
 hide('oplm_inputs')
@@ -651,12 +647,12 @@ cdef = list(list(targets = ncol(values$ctt_booklets)-1,
 render = JS("function(data, type, full){ return '<span class=\"sparkbox\">' + data + '</span>' }")),
 list(className = "numeric", targets = list(7)),
 list(className = "dec-3", targets = list(2,3,4,5)))
-drawcallback = init_sparks(.box = list(chartRangeMin = 0, chartRangeMax = max(values$ctt_booklets$maxTestScore)),
+drawcallback = init_sparks(.box = list(chartRangeMin = 0, chartRangeMax = max(values$ctt_booklets$max_booklet_score)),
 add_js='dt_numcol(settings);')
 selected = 1
 isolate({
 if(!is.null(values$inter_booklet)){
-selected = min(which(values$ctt_booklets == values$inter_booklet))}})
+selected = min(which(values$ctt_booklets$booklet_id == values$inter_booklet))}})
 datatable({ values$ctt_booklets}, 
 rownames = FALSE, selection = list(mode = 'single', selected = selected), 
 class='compact', extensions = 'Buttons',
@@ -686,7 +682,7 @@ output$inter_current_booklet = renderUI(tags$b(paste('Booklet:', values$inter_bo
 observe({
 req(values$inter_booklet, values$inter_plot_items)
 stats = filter(values$ctt_booklets, .data$booklet_id==values$inter_booklet)
-if(stats$N <= stats$nItems){
+if(stats$n_persons <= stats$n_items){
 updateSlider(session, 'interslider', 
 error='Cannot compute the interaction model because the number of responses is smaller than the number of items')
 return(NULL);}
@@ -799,7 +795,7 @@ booklet = pull(ctt_item, booklet_id)
 lgnd = distractor_plot(db, predicate={booklet_id==booklet}, item_id = item_id,main='pos. $item_position in $booklet_id',sub=NULL,legend=FALSE)} else{
 isolate({
 booklets = values$ctt_items %>% 
-filter(.data$item_id==!!item_id & .data$n>1) %>%
+filter(.data$item_id==!!item_id & .data$n_persons>1) %>%
 pull(.data$booklet_id)})
 ly = matrix_layout(length(booklets)) 
 if(ncol(ly)<=3){
@@ -844,7 +840,7 @@ tags$tfoot(tags$tr(tags$td(),
 tags$td(),
 tags$td('sum: ', style='text-align: right;'), 
 tags$td(tags$div(sum(df$n), style="background-color:lightgrey;width:100%;height:100%;text-align:center;")),
-tags$td(paste('avg: ',ctt_item$meanScore), style='text-align: right;'),
+tags$td(paste('avg: ',ctt_item$mean_score), style='text-align: right;'),
 tags$td()),
 style="font-style:italic;"))
 df$n = paste(df$n, sum(df$n),sep=',')
@@ -1002,6 +998,7 @@ options = list(dom='<"dropdown" B>lrtip',
 buttons =  dt_buttons('enorm_coef'),
 pageLength = 20, scrollX = TRUE,
 columnDefs = list(list(className = "dec-3", targets = cdef_target)),
+initComplete = JS("dt_btn_dropdown"),
 fnDrawCallback = JS('dt_numcol')))})
 output$enorm_coef_xl_download = downloadHandler(
 filename = function(){paste0(gsub('\\.\\w+$','',basename(values$project_name), perl=TRUE),'_enorm_coef.xlsx')},
@@ -1770,6 +1767,128 @@ ggsave(file, plot = plt, device = "png", units = 'cm',
 width = input$pvp_download_width, height = input$pvp_download_height,
 dpi = 600)},
 contentType = "image/png"
-)}
+)
+observe({
+req(values$ctt_booklets, input$main_navbar == 'DIF_pane')
+updateSelectInput(session, 'prof_booklet', choices=values$ctt_booklets$booklet_id)})
+observe({
+req(input$prof_booklet, values$person_properties)
+items = get_items(db) %>%
+inner_join(get_design(db), by='item_id') %>%
+filter(booklet_id == input$prof_booklet) %>%
+select(-.data$item_id)
+iprop = tibble(name=colnames(items), n = sapply(items, n_distinct)) %>%
+filter(between(.data$n, 2, nrow(items)/2))
+updateSelectInput(session, 'prof_item', choices = iprop$name)
+updateSelectInput(session, 'DIF_item', choices = c('item_id', iprop$name))
+if(ncol(values$person_properties)>1){
+persons = values$person_properties %>%
+semi_join(dbGetQuery(db,
+'SELECT person_id FROM dxadministrations WHERE booklet_id=:booklet;', 
+list(booklet=input$prof_booklet)),
+by='person_id') %>%
+select(-.data$person_id)
+pprop = tibble(name=colnames(persons), n = sapply(persons, n_distinct)) %>%
+filter(between(.data$n, 2, 3))
+updateSelectInput(session, 'prof_person', choices = pprop$name)}})
+prof_item_prop_vals = reactive({
+req(input$prof_booklet, input$prof_item)
+get_items(db) %>%
+inner_join(get_design(db), by='item_id') %>%
+filter(booklet_id == input$prof_booklet) %>%
+pull(.data[[input$prof_item]]) %>%
+unique()})
+observe({
+req(input$prof_booklet, input$prof_item, prof_item_prop_vals())
+prop = prof_item_prop_vals()
+updateSelectInput(session, 'prof_item_xvals', choices = prop, selected=prop[1:(round(length(prop)/2))])})
+output$prof_plot = renderPlot({
+req(input$prof_booklet,input$prof_item, input$prof_person)
+nvals = length(prof_item_prop_vals())
+req(between(length(input$prof_item_xvals),1,nvals-1))
+stm = "get_responses(db, 
+columns=c('person_id','item_id','item_score',input$prof_item, input$prof_person),
+predicate=booklet_id == input$prof_booklet)"
+dat = eval(parse(text=stm))
+if(nvals != 2){
+prop = tibble(val = prof_item_prop_vals(),
+g = .data$val %in% input$prof_item_xvals) %>%
+group_by(.data$g) %>%
+mutate(p = paste(.data$val, collapse=','))
+dat = inner_join(prop, dat, by=c('val'=input$prof_item))
+colnames(dat)[colnames(dat) == 'p'] = input$prof_item}
+if(packageVersion("dexter") >= '1.1.5'){
+profile_plot(dat, item_property = input$prof_item, covariate = input$prof_person, 
+main=input$prof_item, 
+x=paste(input$prof_item_xvals, collapse=','), 
+cex.legend=1.2,cex.axis=1.2,cex.lab=1.2,cex.main=1.2)} else{
+profile_plot(dat, item_property = input$prof_item, covariate = input$prof_person, 
+main=input$prof_item, 
+x=paste(input$prof_item_xvals, collapse=','))}})
+output$prof_plot_download = downloadHandler(
+filename = function(){
+paste0('profile_',input$prof_booklet,input$prof_item,'.png')},
+content = function(file){
+req(input$prof_booklet,input$prof_item, input$prof_person)
+nvals = length(prof_item_prop_vals())
+req(between(length(input$prof_item_xvals),1,nvals-1))
+stm = "get_responses(db, 
+columns=c('person_id','item_id','item_score',input$prof_item, input$prof_person),
+predicate=booklet_id == input$prof_booklet)"
+dat = eval(parse(text=stm))
+if(nvals != 2){
+prop = tibble(val = prof_item_prop_vals(),
+g = .data$val %in% input$prof_item_xvals) %>%
+group_by(.data$g) %>%
+mutate(p = paste(.data$val, collapse=','))
+dat = inner_join(prop, dat, by=c('val'=input$prof_item))
+colnames(dat)[colnames(dat) == 'p'] = input$prof_item}
+png(filename=file, type='cairo-png', width=960,height=640)
+if(packageVersion("dexter") >= '1.1.5'){
+profile_plot(dat, item_property = input$prof_item, covariate = input$prof_person, 
+main=input$prof_item, 
+x=paste(input$prof_item_xvals, collapse=','), 
+cex.legend=1.2,cex.axis=1.2,cex.lab=1.2,cex.main=1.2)} else{
+profile_plot(dat, item_property = input$prof_item, covariate = input$prof_person, 
+main=input$prof_item, 
+x=paste(input$prof_item_xvals, collapse=','))}
+dev.off()},
+contentType = "image/png"
+)
+observe({
+req(values$person_properties, input$main_navbar == 'DIF_pane')
+if(ncol(values$person_properties)>1){
+persons = select(values$person_properties, -.data$person_id)
+pprop = tibble(name=colnames(persons), n = sapply(persons, n_distinct)) %>%
+filter(.data$n==2)
+updateSelectInput(session, 'DIF_person', choices = pprop$name, selected = pprop$name[1])}})
+DIF_object = reactive({
+req(db,input$DIF_person)
+DIF(db, person_property=input$DIF_person)})
+output$DIF_plot = renderPlot({
+req(input$DIF_item, DIF_object())
+items=NULL
+if(input$DIF_item != 'item_id'){
+items = get_items(db) %>%
+arrange(.data[[input$DIF_item]]) %>%
+pull(.data$item_id)}
+plot(DIF_object(), items=items, cex.axis=1)})
+output$DIF_text = renderPrint({
+DIF_object()})
+output$DIF_plot_download = downloadHandler(
+filename = function(){
+paste0('DIF',input$DIF_person,'.png')},
+content = function(file){
+req(DIF_object()) 
+items=NULL
+if(input$DIF_item != 'item_id'){
+items = get_items(db) %>%
+arrange(.data[[input$DIF_item]]) %>%
+pull(.data$item_id)}
+png(filename=file, type='cairo-png', width=960,height=640)
+plot(DIF_object(), items=items,cex.axis=1)
+dev.off()},
+contentType = "image/png"
+)  }
 shinyApp(get_ui(), server)}
 

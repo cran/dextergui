@@ -1,3 +1,8 @@
+# dextergui 0.2.4
+
+* a new tab with DIF and subgroup analysis
+* updates for dexter 1.1.5
+
 # dextergui 0.2.3
 
 * suggest knitr in description at request of cran
@@ -28,7 +33,7 @@
 
 * slightly improved help
 * bugfix for a breaking change in shinyFiles 0.7.0
-* small change to accomodate a new ggplot2 release
+* small change to accommodate a new ggplot2 release
 
 # dextergui 0.1.3
 
