@@ -1,3 +1,7 @@
+# dextergui 0.2.5
+
+* fixes for deprecated functions in newer ggplot
+
 # dextergui 0.2.4
 
 * a new tab with DIF and subgroup analysis
