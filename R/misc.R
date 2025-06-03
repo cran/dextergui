@@ -7,12 +7,8 @@ if.else = function(a,b,c)
   c
 }
 
-none2null = function(x){
-  if(length(x)==1 && tolower(x)=='none') return(NULL)
-  x[tolower(x)!='none']
-} 
-
 is_integer_ = function(x) is.integer(x) || (is.numeric(x) && all(x %% 1 == 0))
+is_double_ = function(x) is.double(x) && !all(x %% 1 == 0)
 
 dropNulls = function(x) x[!vapply(x, is.null, FUN.VALUE = logical(1))]
 
@@ -25,25 +21,6 @@ qcolors = function(n)
 
   rep_len(pal,n)
 }
-
-# get_palettes = function(category=c('qual','div','seq','all'), max_colors = 100)
-# {
-#   ctg = match.arg(category)
-#   if(category == 'all')
-#   {
-#     pal = brewer.pal.info %>% mutate_if(is.factor, as.character) %>% add_column(name = rownames(brewer.pal.info))
-#   } else
-#   {
-#     pal = brewer.pal.info %>% mutate_if(is.factor, as.character) %>% add_column(name = rownames(brewer.pal.info))  %>% 
-#       filter(.data$category == ctg)
-#   }
-#   
-#   pal = split(pal, pal$name)
-#   
-#   lapply(pal, function(p){
-#     paste(p$name,paste(brewer.pal(min(p$maxcolors, max_colors), p$name), collapse=' '), sep=';')
-#   } )
-# }
 
 resp_data_bkl = function(rsp, bkl)
 {
@@ -63,6 +40,44 @@ resp_data_split_bkl = function(rsp)
     })
   names(res) = lapply(res, function(x) x$design$booklet_id[1])
   res
+}
+
+lru_cache = function(size)
+{
+  cache = vector(mode='list', length=size)
+  i = 1L
+  
+  as_char = function(x)
+  {
+    if(length(x) == 0 || (length(x)==1 && x == '')) 'NULL'
+    else as.character(x)
+  }
+  
+  make_hash = function(hash)
+  {
+    if(is.null(hash)) return('NULL')
+    
+    paste(unlist(lapply(hash, as_char)), collapse = '_._')
+  }
+  
+  function(hash, obj=NULL)
+  {
+    hash = make_hash(hash)
+    if(is.null(obj))
+    {
+      #if(!is.null(cache[[hash]]))
+      #{
+      #  print(sprintf('from mem: %s', hash))
+      #}
+      return(cache[[hash]])
+    }
+    #print(sprintf('caching: %s', hash))
+    if(i>size) i <<- 1L
+    cache[[i]] <<- obj
+    names(cache)[i] <<- hash
+    i <<- i+1L
+    NULL
+  }
 }
 
 
@@ -122,25 +137,25 @@ matrix_layout = function(npic){
 
 
 # is incidence matrix connected
-im_is_connected = function(im)
-{
-  d = crossprod(im, im)
-  diag(d) = 0
-
-  visited = rep(FALSE, ncol(d))
-  rownames(d) = c(1:nrow(d))
-  colnames(d) = c(1:nrow(d))
-  dfs = function(start) {
-    start = as.integer(start)
-    if (visited[start])
-      return(0)
-    visited[start] <<- TRUE
-    vapply(rownames(d)[d[, start] > 0], dfs, 0)
-    0
-  }
-  dfs(1)
-  return(all(visited))
-}
+# im_is_connected = function(im)
+# {
+#   d = crossprod(im, im)
+#   diag(d) = 0
+# 
+#   visited = rep(FALSE, ncol(d))
+#   rownames(d) = c(1:nrow(d))
+#   colnames(d) = c(1:nrow(d))
+#   dfs = function(start) {
+#     start = as.integer(start)
+#     if (visited[start])
+#       return(0)
+#     visited[start] <<- TRUE
+#     vapply(rownames(d)[d[, start] > 0], dfs, 0)
+#     0
+#   }
+#   dfs(1)
+#   return(all(visited))
+# }
 
 combined_var = function(means,vars,n)
 {
@@ -154,8 +169,8 @@ ctt_items_table = function(items, averaged)
 {
   if(averaged)
   {
-    items = items %>% 
-      group_by(.data$item_id) %>% 
+    items = items |> 
+      group_by(.data$item_id) |> 
       summarise(n_booklets = n(), 
                 w_mean_score = weighted.mean(.data$mean_score, w = .data$n_persons, na.rm = TRUE), 
                 sd_score = sqrt(combined_var(.data$mean_score, .data$sd_score^2, .data$n_persons)),
@@ -163,15 +178,18 @@ ctt_items_table = function(items, averaged)
                 pvalue = weighted.mean(.data$pvalue, w = .data$n_persons, na.rm = TRUE), 
                 rit = weighted.mean(.data$rit, w = .data$n_persons, na.rm = TRUE), 
                 rir = weighted.mean(.data$rir, w = .data$n_persons, na.rm = TRUE), 
-                n_persons = sum(.data$n_persons)) %>%
-      ungroup() %>%
+                n_persons = sum(.data$n_persons)) |>
+      ungroup() |>
       rename(mean_score = .data$w_mean_score)
   }
   
-  items %>%
-    mutate(pvalue = round(.data$pvalue,3), rit = round(.data$rit,3), rir = round(.data$rir,3),
-          mean_score = round(.data$mean_score,2), sd_score = round(.data$sd_score,2))
+  items
+}
 
+tbl_names = function(nms)
+{
+  nms = gsub('((booklet)|(test))_score','score',nms,perl=TRUE)
+  gsub('_(?!id)',' ',nms,perl=TRUE)
 }
 
 
@@ -242,10 +260,10 @@ guess_csv_format = function(txt, delim = c('|',';',',','\t'))
   out = list(stringsAsFactors = FALSE, dec='.', quote = "\"'")
   # first guess quote
   # assumes doubling quote character to escape
-  dbl_q = gregexpr('"', txt, fixed = TRUE) %>%
+  dbl_q = gregexpr('"', txt, fixed = TRUE) |>
     sapply(function(ps) if.else(length(ps) %% 2 != 0, -1, min(ps)))
   
-  sngl_q = gregexpr("'", txt, fixed = TRUE) %>%
+  sngl_q = gregexpr("'", txt, fixed = TRUE) |>
     sapply(function(ps) if.else(length(ps) %% 2 != 0, -1, min(ps)))
   
   
@@ -263,7 +281,7 @@ guess_csv_format = function(txt, delim = c('|',';',',','\t'))
     txt = gsub(paste0(out$quote,'[^',out$quote,']*', out$quote),'',txt,perl=TRUE)
   }
 
-  delim = sapply(delim, function(dl) nchar(txt) - nchar( gsub(dl, "", txt,fixed=TRUE)), simplify=FALSE) %>%
+  delim = sapply(delim, function(dl) nchar(txt) - nchar( gsub(dl, "", txt,fixed=TRUE)), simplify=FALSE) |>
     sapply(unique, simplify=FALSE)
   
   delim = delim[sapply(delim, length) == 1 & sapply(delim, min) > 0]
@@ -299,7 +317,9 @@ read_spreadsheet = function(fn)
     read_excel(fn, sheet = 1, col_names = TRUE)
   } else if(grepl('\\.ods$', fn, perl=TRUE, ignore.case=TRUE))
   {
-    read_ods(fn, sheet = 1, col_names = TRUE)
+    if(!require_ask_install('readODS')) return(NULL)
+
+    readODS::read_ods(fn, sheet = 1, col_names = TRUE)
   } else
   {
     con = file(fn, "r")
@@ -352,8 +372,3 @@ readSCR = function (file)
        responses_start = fmt[3], response_length = fmt[5],
        expanded = expanded)
 }
-
-
-
-
-

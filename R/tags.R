@@ -1,5 +1,22 @@
 ### extensions to shiny tags ###
 
+require_ask_install = function(package, 
+  msg = sprintf('This action requires the package "%s" to be installed.\nDo you wish to install it?', package))
+{
+  if(requireNamespace(package, quietly=TRUE)) return(TRUE)
+  
+  showModal(modalDialog(
+    msg,
+    hidden(textInput("install_package_name","",value=package)),
+    title="Install required package",
+    footer = tagList(actionButton("do_install_package", "Install"),
+      modalButton("Cancel")
+    )
+  ))
+  # we cannot wait unfortunately
+  return(FALSE)
+}
+
 dt_attach_dependencies = function(dt)
 {
   dep = datatable(tibble(a=0))$dependencies
@@ -32,6 +49,22 @@ plot_add_download_btn = function(plt)
   tags$div(plt, btn, style='position:relative')
 }
 
+eCheckboxGroupInput = function(inputId,label, ..., inline=FALSE, direction=c('vertical','horizontal'))
+{
+  direction = match.arg(direction)
+  args = list(...)
+  args$inputId = inputId
+  args$label = label
+  args$inline = direction == 'horizontal'
+  
+  x = do.call(checkboxGroupInput, args)
+  
+  if(!inline && args$inline)
+  {
+    x$attribs$class = trimws(gsub('[^ ]*inline[^ ]*','',x$attribs$class,perl=TRUE))
+  }
+  x
+}
 
 
 # editable also implies readable
@@ -103,6 +136,29 @@ multiToggleButton = function(id, choices, selected='', btn_width='7em', style=NU
   
   do.call(tags$div, args)
   
+}
+
+paletteInput = function(inputId, label, selected='ggplot',width=NULL,size=NULL)
+{
+  opts = list( 
+    render = I("{
+        item: function(item, escape) { 
+          return item.label; 
+        },
+        option: function(item, escape) { 
+          return item.label; 
+        }
+      }"))
+  
+  selectizeInput(inputId, label, choices=palette_choices(), selected=selected, width=width,size=size, multiple=FALSE, options=opts)
+}
+
+palette_choices = function(n_colors=1)
+{
+  x = filter(gui_palettes, .data$max_colors >= n_colors)
+  choices = as.list(x$names)
+  names(choices) = x$content
+  choices
 }
 
 
@@ -236,7 +292,12 @@ updateRangeInput = function(session, inputId,  value = NULL,
                      value = value[2],min = min, max = max, step = step)
 }
 
-
+clean_help_text = function(x)
+{
+  x = gsub("'", "\\'", x, fixed=TRUE)
+  x = gsub('\n',' ', x)
+  gsub('NULL', 'empty', x, fixed=TRUE) 
+}
 
 # generate a set of input tags and an execute button for an R function
 #
@@ -328,10 +389,7 @@ generate_inputs = function(fun, id = deparse(substitute(fun)),
       }
       tgs[[paste(tt_id,'tip',sep='_')]] = bsTooltip(
           tt_id,
-          hlp$arguments[[argname]] %>%
-            gsub("'", "\\'", ., fixed=TRUE) %>%
-            gsub('\n',' ', .) %>%
-            gsub('NULL', 'empty', ., fixed=TRUE),
+          clean_help_text(hlp$arguments[[argname]]) ,
           options=list(delay=300, html=TRUE))
     }
   }
@@ -539,6 +597,3 @@ dt_foot_summary = function(df)
   }
   
 }
-
-
-

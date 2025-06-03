@@ -1,5 +1,5 @@
 
-# With some small changes borrrowed from: 
+# With some  changes borrowed from: 
 # https://github.com/daattali/advanced-shiny/tree/master/busy-indicator
 
 
@@ -77,4 +77,3 @@ errorFunc <- function(err, buttonId) {
   shinyjs::html(html = errMessage, selector = errElMsg)
   shinyjs::show(selector = errEl, anim = TRUE, animType = "fade")
 }
-

@@ -49,7 +49,7 @@ The easiest way to familiarize yourself with dextergui is to open an example pro
 
 ## Start or open a project
 
-Dexter organizes test data in projects. Projects are miniature databases that are saved in a .Sqlite file and contain all your project data, including but not limited to e.g. items, scoring rules and response data. On the project overview page you can start a new project, open an existing project or browse through an example project. Example project datasets are taken from the packages *dexter*, *psych*, *sirt* and *MLCIRTwithin* if installed. 
+Dexter organizes test data in projects. Projects are miniature databases that are saved in a .Sqlite file and contain all your project data, including but not limited to e.g. items, scoring rules and response data. On the project overview page you can start a new project, open an existing project or browse through an example project. Example project datasets are taken from the packages *dexter*, *psych* and *sirt* , if installed. 
 
 ![](img/project_bar.PNG)
 
@@ -73,8 +73,8 @@ In both cases the first row must contain the exact column names. Below you see e
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 
 
-data.frame(item_id = c('S1DoCurse', 'S1DoScold'), response = c(0,0,1,1,2,2), item_score = c(0,0,1,1,2,2)) %>%
-  arrange(item_id, response) %>%
+data.frame(item_id = c('S1DoCurse', 'S1DoScold'), response = c(0,0,1,1,2,2), item_score = c(0,0,1,1,2,2)) |>
+  arrange(item_id, response) |>
   kable(caption='Standard format, suitable for polytomous and mc items')
 
 ```
@@ -83,7 +83,7 @@ data.frame(item_id = c('S1DoCurse', 'S1DoScold'), response = c(0,0,1,1,2,2), ite
 
 ```{r, echo=FALSE, out.extra='style="float:left;"'}
 
-data.frame(item_id = c('mcItem_1', 'mcItem_2','mcItem_3'), nOptions = c(3,4,3), key=c('C','A','A')) %>%
+data.frame(item_id = c('mcItem_1', 'mcItem_2','mcItem_3'), nOptions = c(3,4,3), key=c('C','A','A')) |>
   kable(caption='Alternative format, only suitable for mc items')
 
 ```
@@ -101,12 +101,12 @@ To import response data, select the *Data import* tab in the navigation bar on t
 
 ![](img/main_bar2.PNG)
 
-Response data is imported one booklet at a time. First provide a unique name for the booklet or testform in the field *booklet id*. Next use the *Browse* button to select a file with response data. This file can be in excel or csv format and the first row must contain column names. 
+Response data can be imported in wide format, one booklet at a time, or in long format for an unlimited number of booklets. For a single booklet, first provide a unique name for the booklet the field *booklet id*. Next use the *Browse* button to select a file with response data. This file can be in excel or csv format and the first row must contain column names. 
 
 The column names should be item id's which each have an exact match to the item id's in your scoring rules, note that capitalization matters. You can also include person properties like grade or study program. It is also good practice (but not mandatory) to include a column <i>person_id</i> with a unique identification of each person in your data. Each row in your data, apart from the column names, should represent a single person like in the example below. 
 
 ```{r, echo=FALSE}
-verbAggrData[1:8,1:8] %>%
+verbAggrData[1:8,1:8] |>
   kable(caption="example response data for the verbal aggression dataset (Vansteelandt, 2000)")
 ```
 
@@ -125,7 +125,7 @@ When you select a file, dexter shows a preview of the response data. Any column 
    </tbody> </table>
 
 
-If the preview looks all right you can import the response data by pressing the import button.
+If the preview looks all right you can import the response data by pressing the import button. For long format data you need a design file and a response data file. The exact format can be seen by clicking the question mark button.
 
 
 ## Classical analysis
@@ -148,8 +148,8 @@ tia=tia_tables(db)
 ```
 
 ```{r}
-tia$booklets %>%
-  mutate_if(is.double, round, digits=3) %>%
+tia$booklets |>
+  mutate_if(is.double, round, digits=3) |>
   kable()
 ```
 
@@ -168,9 +168,9 @@ The Rasch model fits this item very well, so the two curves practically coincide
 The items tab shows classical statistics for the items on the left, including RiT, RiR and pvalue.
 
 ```{r}
-tia$items %>%
-  slice(1:10) %>%
-  mutate_if(is.double, round, digits=3) %>%
+tia$items |>
+  slice(1:10) |>
+  mutate_if(is.double, round, digits=3) |>
   kable()
 ```
 
@@ -191,9 +191,10 @@ This plot of the verbal aggression set (see the included examples), shows that, 
 ![](img/profile_buttons.PNG)
 
 ```{r,fig.width=5,fig.height=5,results='hide'}
-get_items(db) %>%
-  mutate(behavior2=if_else(behavior %in% c('Curse','Scold'),'Curse,Scold',behavior)) %>%
-  add_item_properties(db,.)
+ii = get_items(db) |>
+  mutate(behavior2=if_else(behavior %in% c('Curse','Scold'),'Curse,Scold',behavior))
+
+add_item_properties(db,ii)
 
 profile_plot(db, item_property='behavior2', covariate='gender',x='Curse,Scold',main='behavior')
 
@@ -240,7 +241,7 @@ The extensive [online documentation for dexter](https://dexter-psychometrics.git
 
 ## Issues
 
-If you have **problems downloading images and data**, the solution is to open the application in a browser (use the *open in browser* button on the top of the screen). Best results are achieved with the *Chrome* browser, although most others work fine. The exception is currently Microsoft Edge, in which the application does not work very well yet.
+If you have **problems saving images and data**, the solution is to open the application in a browser (use the *open in browser* button on the top of the screen). Best results are achieved with the *Chrome* browser, although most others work fine. The exception is currently Microsoft Edge, in which the application does not work very well.
 
 If you have another question, encounter a bug or would like to request a feature, please tell us about it on https://github.com/dexter-psychometrics/dexter/issues . 
 

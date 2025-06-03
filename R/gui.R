@@ -18,6 +18,72 @@ header = function()
 }
 
 
+plotUI = function(w=c('pvp','abp'))
+{
+  w = match.arg(w)
+  id = function(i) sprintf('%s_%s',w,i)
+  
+  empty_option = list(allowEmptyOption=TRUE, showEmptyOptionInDropdown=TRUE,emptyOptionLabel='none')
+  
+  tagList(
+    fluidRow(
+      column(width = 12,
+             imgSelect(id("plotbar")))
+    ),
+    fluidRow(
+      br(),
+      column(width = 8,
+             tags$style(type = "text/css",
+                        ".shiny-output-error { visibility: hidden; }",
+                        ".shiny-output-error:before { visibility: hidden; }"),
+             plotOutput(outputId = id("plot")),
+             tags$div(tableOutput(outputId = id("table")),style='margin:2em;')
+      ),
+      # helplabels bij group, weights, clusters, strata
+      # strata kan meerdre zijn natuurlijk
+      column(width = 4,
+             hidden(selectizeInput(inputId = id("group"), label = "Grouping Variable", choices=c(), width='100%',options=empty_option)),
+             hidden(selectizeInput(inputId = id("weights"), label = "Weights", choices=c(), width='100%',options=empty_option)),
+             hidden(selectInput(inputId = id("cluster"), label = "Clusters", choices=c(), width='100%', multiple=TRUE)),
+             hidden(selectInput(inputId = id("stratum"), label = "Strata", choices=c(), width='100%', multiple=TRUE)),
+             hidden(multiToggleButton(id = id('outputformat'),choices=c('plot','table'), selected='plot')),
+             hr(),
+             hidden(numericInput(inputId = id('ci'),label='Confidence interval', value=0.95,min=0,max=.99,step=.01,width='100%')),
+             hidden(multiToggleButton(id = id('stackfacet'),
+                                      choices = c(overlay= 'Overlay', facetted='Facetted', joy='Joy'), selected = 'overlay')),
+             hidden(selectInput(inputId = id("xvar"), label = "x-variable",
+                                choices = c(), width='100%')),
+             hidden(checkboxInput(inputId = id("fill"), label = "Fill", value = TRUE)),
+             hidden(checkboxInput(inputId = id("grid"), label = "Grid", value = TRUE)),
+             hidden(tags$input(id = id("color"), type = 'color', value = '#4DAF4A', style = 'width:5em;', class = 'shiny-color-picker')),
+             hidden(paletteInput(inputId = id("palette"),"Palette")),
+             hidden(checkboxInput(inputId = id("linetype"), label = "Varying line types", value = FALSE)),
+             hidden(sliderInput(inputId = id("bins"), label = "Number of bins",
+                                min = 5, max = 60, value = 30, step = 1, round = TRUE, ticks = FALSE, width='100%')),
+             hidden(sliderInput(inputId = id("trans"), label = "Transparency",
+                                min = 0.2, max = 1, value = 0.5, step = 0.05, ticks = FALSE, width='100%')),
+             hidden(eCheckboxGroupInput(inputId = id("fitlines"), label = '', choices=c("Fitline(s)"='fitlines',"se"),
+                                        inline=FALSE, direction='horizontal')),
+             hidden(tags$div(id=id("labels"),
+              textInput(inputId = id("main"), label = "Title", width='100%'), 
+              fluidRow(
+               column(width = 6,
+                      textInput(inputId = id("xlab"),label = "Label x-axis")),
+               column(width = 6,
+                      textInput(inputId = id("ylab"), label = "Label y-axis")))
+             )),
+             hidden(
+             tags$div(id=id('download-container'),
+               tags$h4('Save plot'),
+               tagAppendAttributes(numericInput(id('download_width'), 'Width (cm)', value = 14, min = 2, max = 50, 
+                                                width='6em'),style='display:inline-block;'),
+               tagAppendAttributes(numericInput(id('download_height'), 'Height (cm)', value=8, min = 2, max = 50, 
+                                                width='6em'),style='display:inline-block;'),
+               downloadButton(id('download'), 'Save')))
+      )
+    ))
+}
+
 get_ui = function()
 {
 	tagList(header(),		
@@ -75,7 +141,7 @@ get_ui = function()
         		      tags$b('1) Scoring rules per response'),
         		      tags$p('A csv or excel file with columns item_id, response and item_score with a separate row for each item-response combination',
         		             style="padding:5px;"),
-    		          df2html(data.frame(item_id = c('S1DoCurse', 'S1DoScold'), response = c(0,0,1,1,2,2), item_score = c(0,0,1,1,2,2)) %>%
+    		          df2html(data.frame(item_id = c('S1DoCurse', 'S1DoScold'), response = c(0,0,1,1,2,2), item_score = c(0,0,1,1,2,2)) |>
         		                arrange(.data$item_id, .data$response),
         		              class="min-table", style="margin-bottom:16px;"),
       		        tags$b('2) Keys'),
@@ -171,9 +237,9 @@ get_ui = function()
 		                   '<li>response</li></ul>',
 		                   'Each row should contain a single response.<br/>For each booklet in the respons data, dexter needs to know',
 		                   'which items that booklet should contain. Missing responses in the data will then be replaced with "NA".',
-		                   'You specify this in the design file which should conain the following columns:',
+		                   'You specify this in the design file which should contain the following columns:',
 		                   '<ul><li>booklet_id</li><li>item_id</li><li>item_position (optional)</li><ul><br/>',
-		                   "If all booklet_id's in the data are already known in the dexter-project, you don't need to specify a design."),
+		                   "(If all booklet_id's in the data are already known in the dexter-project, you don't need to specify a design.)"),
 		                  id='help-import-data-file-long', class='collapse',style="margin-bottom:1em;"),
 		          fileInput('data_file_long', 'Data file',width='100%'),
 		          fileInput('design_file_long','Design file',width='100%'),
@@ -196,18 +262,22 @@ get_ui = function()
 		          tags$p(tags$i('Click on one of the rows to display the item total regressions.')),
 		          style="padding-right:2em;"),
 		        column(6,
-		         tags$h4('Item total regressions',style='margin-bottom:1em;display:inline-block;'),
-		         tags$div(
-		           tags$div(
-		             checkboxInput('inter_summate','summate', value=TRUE), 
-		             checkboxInput('inter_show_observed','show observed', value=TRUE),
-		             style='display:inline-block;width:20ex;'),
-		           enumericInput('inter_curtains', 'curtains', value='10', min='0', max='100', width = '6em', inline=TRUE),
-		           style='display:inline-block;float:right;'),
-		         uiOutput('inter_current_booklet'),
+		         tags$h4('Item total regressions'),
+		          fluidRow(
+		            column(8,
+		              uiOutput('inter_current_booklet',container=tags$h5),
+		              tags$p(tags$i("These plots show three item-total regressions. The dots show the observed regression: the average score on the item given the total score",
+            		         " on the test. There are also two regression models: the interaction model is shown with a thicker but lighter line,",
+            		         " and the Rasch model is shown with a thinner, darker line."))),
+		            column(4,
+		              tags$div(
+		                checkboxInput('inter_summate','summate', value=TRUE), 
+		                checkboxInput('inter_show_observed','show observed', value=TRUE),
+		                style='display:inline-block;width:20ex;'),
+		              enumericInput('inter_curtains', 'curtains', value='10', min='0', max='100', width = '6em', inline=TRUE))),
 		         tags$div(
 		           plotSlider('interslider',width='90%'),
-		           style='padding:5px;clear:both;'
+		           style='padding:5px;'
 		           )),
 		        style='padding:1em;')),
 				tabPanel('items',
@@ -291,7 +361,6 @@ get_ui = function()
   			  uiOutput('enorm_design_connected'),
   			  forceNetworkOutput('design_plot', height=450),
   			  eselectInput('enorm_method',label='Method',choices = eval(formals(fit_enorm)$method), width = '30%', inline=TRUE),
-  			  #enumericInput('enorm_nIterations', label = 'nIterations',value=eval(formals(fit_enorm)$nIterations), width = '30%', inline=TRUE),
   			  withBusyIndicatorUI(actionButton('go_fit_enorm','fit_enorm',class='btn btn-primary')),
   			  htmlOutput('fit_enorm_result'),
   			  width=3, class="col-side-left"
@@ -300,24 +369,21 @@ get_ui = function()
 			  tabsetPanel(type = 'tabs',id='enorm_tabs',
 				tabPanel('Abilities', value='ability',
 				  # standard_errors weggelaten, op termijn zouden die in abplot meegenomen kunnen worden       
-				  wellPanel(generate_inputs(ability, omit=c('dataSrc','parms','standard_errors','use_draw','npv'), 
+				  wellPanel(generate_inputs(ability, omit=c('dataSrc','parms','merge_within_persons','parms_draw'), 
 				                            inline=TRUE,width='120px'),
 				            style='border:none;'),
 				  tabsetPanel(type='tabs',
-					tabPanel('plots', abplotUI()
-					         ),
+					tabPanel('plots', plotUI('abp')),
 					tabPanel('data',
 					         tags$br(),
 					         dataTableOutput('person_abilities'),
 					         download_buttons('person_abilities')))),
 				tabPanel('Plausible values', value='plausible_values',
-				  wellPanel(generate_inputs(plausible_values, omit=c('dataSrc','parms','use_draw'), 
+				  wellPanel(generate_inputs(plausible_values, omit=c('dataSrc','parms','merge_within_persons','parms_draw'), 
 				                            inline=TRUE,width='150px'),
-				            style='border:none;'),
-				  pvplotUI()),
+				            style='border:none;'),plotUI('pvp')),
 				tabPanel('Score-ability tables', value='ability_tables',
-				  wellPanel(generate_inputs(ability_tables, omit=c('parms','design','standard_errors','npv'), 
-				                            input_type=list(use_draw='numeric'),inline=TRUE, width='120px'),
+				  wellPanel(generate_inputs(ability_tables, omit=c('parms','design','parms_draw'),inline=TRUE, width='120px'),
 				            style='border:none;'),
 				  fluidRow(
 				    column(6, 
@@ -325,23 +391,21 @@ get_ui = function()
 				      tags$hr(),
 				      tags$div(dataTableOutput('abl_tables'), download_buttons('abl_tables') ),style='max-width:600px;'),
 				    column(6, 
-				      tags$h3('Test information functions'),
+				      tags$h3('Booklets'),
 				      tags$hr(),
 				      tags$div( # this div to give the hovering tooltip a reference point
 				      plot_add_download_btn(
-				        plotOutput('abl_tables_plot_ti', height='400px', 
-				                      hover= hoverOpts("abl_tables_plot_ti_hov", delay = 200, delayType = "debounce"))),
-				      uiOutput("abl_tables_plot_ti_hinf"), style='position:relative;'),
-             selectizeInput('abl_tables_plot_booklet', 'Choose booklets to plot', c(), multiple = TRUE),
+				        plotOutput('abl_tables_plot', height='400px', 
+				                      hover= hoverOpts("abl_tables_plot_hov", delay = 200, delayType = "debounce"))),
+				      uiOutput("abl_tables_plot_hinf"), style='position:relative;'),
+				      selectInput('abl_tables_plot_sel','Plot type',choices=c('Score transformation'='score','Test information'='info','Standard error'='SE')),
+             selectizeInput('abl_tables_plot_booklet', 'Choose booklets to plot', choices=c(), multiple = TRUE),
 				      style="padding-left:4em;"))),
 				tabPanel('Items', value='enorm_items',
 				  fluidRow(
 				    column(5,
 				      tags$h3('Parameters'),
 				      tags$hr(),
-				      hidden(multiToggleButton('coef_format', selected='norm',btn_width='3em',style='float:right;margin-top:-12px;',
-				                        choices=list(norm = tags$span(class="fa fa-list"),
-				                                     denorm = tags$i(class="fa fa-columns")))),
     				   tags$div(
     				     dataTableOutput('enorm_coef'),
     				     download_buttons('enorm_coef')),
@@ -363,5 +427,3 @@ get_ui = function()
 		           class='help-page-outer'))
 		))
 }
-
-
