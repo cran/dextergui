@@ -67,6 +67,9 @@ pv_mean = function(dat, group=NULL, cluster=NULL, stratum=NULL, weights=NULL, da
 }
 
 
+
+
+
 weighted_ecdf = function(dat,weights=NULL, group=NULL, npoints=400, dat_id=NULL, cache=NULL)
 {
   if(!is.null(cache) && !is.null(dat_id))
@@ -80,16 +83,18 @@ weighted_ecdf = function(dat,weights=NULL, group=NULL, npoints=400, dat_id=NULL,
   grid = seq(rng[1],rng[2],length.out=npoints)
   w_ecdf = function(x, w=1)
   {
-    tibble(x=x,w=w) |>
-      mutate(brk = cut(x, c(-Inf,grid,Inf), labels=FALSE)) |>
-      group_by(.data$brk) |>
-      summarise(p = sum(.data$w)) |>
-      ungroup() |>
-      right_join(tibble(brk=1:npoints), by='brk') |>
-      mutate(p = coalesce(.data$p,0)) |>
-      arrange(.data$brk) |>
-      mutate(p = cumsum(.data$p/sum(.data$p))) |>
-      pull('p')
+    if(length(w)<=1)
+      return(ecdf(x)(grid))
+    
+    n = length(x)
+    sort_order = order(x)
+    x = x[sort_order]
+    w = w[sort_order]
+    
+    p = cumsum(w)
+    p = p/p[n]
+    
+    approx(x, p, xout = grid, yleft = 0, yright = 1, ties = "ordered", method = "constant")$y
   }
   
   if(isTruthy(group))
@@ -301,6 +306,8 @@ weighted_box = function(dat, group=NULL, weights=NULL,dat_id=NULL, cache=NULL)
     stat_box = function(theta,p)
     {
       bp = sapply(c(0,0.25,0.5,0.75,1), function(prob){
+        if(prob==1) return(last(theta))
+        if(prob==0) return(theta[1])
         i = min(which(p>=prob))
         if(i==1) return(theta[i])
         theta[i-1] + (p[i] - p[i-1]) * (theta[i]-theta[i-1])
@@ -342,6 +349,13 @@ ability_plot = function(dat, plot_type=c("hist", "box", "ecdf", "dens", "pointra
   # assign("debug", x, envir = .GlobalEnv)
   # end debugging
   
+  # we do not need much precision for thumbnail, exclude line/scat since they use just 1 pv anyways
+  if(thumbnail && 'PV6' %in% colnames(dat) && !is.null(dat_id) && !plot_type %in% c("line", "scat"))
+  {
+    dat_id = paste0(dat_id,'_thumb')
+    dat = select(dat,-matches('^PV\\d{2,}$'),-matches('^PV[6-9]$'))
+  }
+
   stackfacet = match.arg(stackfacet)
   plot_type = match.arg(plot_type)
 
@@ -602,6 +616,7 @@ ability_plot = function(dat, plot_type=c("hist", "box", "ecdf", "dens", "pointra
       ggtitle(rstr_eval(title,dat)) +
       theme(plot.title = element_text(size = 20))
   }
+  
   
   p
 }
