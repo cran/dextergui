@@ -28,6 +28,13 @@ dt_readable = function(dt_output){
   dt_output
 }
 
+bsTooltip = function(id,title)
+{
+  #shinyBS::bsTooltip(id,title,options=options)
+  tags$script(JS(sprintf('sdtooltips["%s"]="%s";', id, title)))
+}
+
+
 df2html = function(df, ...)
 {
   do.call(tags$table,
@@ -104,7 +111,7 @@ savename_btn = function(id, label,width='116px',...)
                    style=paste0('float:left;display:inline-block;border-bottom-left-radius:0;border-top-left-radius:0;width:', width),
         class="input-group"),
       class='form-group'),
-      style='display:inline-block;vertical-align:top;margin-bottom:5px;')
+      style='display:inline-block;vertical-align:top;margin-bottom:5px;',class='shiny-input-container shiny-input-container-inline')
 }
 
 
@@ -394,18 +401,11 @@ generate_inputs = function(fun, id = deparse(substitute(fun)),
     }    
     if(tooltip && argname %in% names(hlp$arguments))
     {
-      if(input_type[[argname]] == 'file_input')
-      {
-        tgs[[argname]]$attribs$id = paste0(paste(id, argname,sep='_'),'-fg-container')
-        tt_id = tgs[[argname]]$attribs$id
-      } else
-      {
         tt_id = paste(id, argname,sep='_')
-      }
+
       tgs[[paste(tt_id,'tip',sep='_')]] = bsTooltip(
           tt_id,
-          clean_help_text(hlp$arguments[[argname]]) ,
-          options=list(delay=300, html=TRUE))
+          clean_help_text(hlp$arguments[[argname]]))
     }
   }
 
@@ -416,7 +416,7 @@ generate_inputs = function(fun, id = deparse(substitute(fun)),
     tgs[[paste0('go_', id)]] = go_button(paste0('go_', id), label, class = paste('btn btn-primary',ifelse(inline,'inline','')))
   }
   
-  if(tooltip) tgs[[paste0(id,'descr')]] = bsTooltip(paste0('go_', id), gsub('\n',' ', hlp$description), options=list(delay=300))
+  if(tooltip) tgs[[paste0(id,'descr')]] = bsTooltip(paste0('go_', id), gsub('\n',' ', hlp$description))
   do.call(tagList,tgs)
 }
 
